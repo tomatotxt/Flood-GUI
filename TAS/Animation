@@ -133,7 +133,7 @@ local swimAngleAnimations = {} -- Stores the raw Animation instances for swim an
 
 -- Movement / State Flags
 local isSwimmingEnabled = false
-local isSliding = false
+getgenv().Animation.isSliding = false
 local isWallHanging = false
 local isSwinging = false
 local isAnimationLocked = false -- Used by the remote function
@@ -366,7 +366,7 @@ local function setMainAnimationSpeed(speed)
 		currentMainAnimTrack:AdjustSpeed(currentAnimSpeed)
 	end
 end
-
+getgenv().Animation.setAnimationSpeed = setMainAnimationSpeed
 -- Handles KeyframeReached events for the main animation track
 local function onMainAnimKeyframeReached(keyframeName)
 	if keyframeName == "End" then
@@ -390,7 +390,7 @@ function playAnimation(animName, fadeTime)
 	if isAnimationLocked then return end -- Prevent changes if locked
 
 	local requiredState = nil
-	if isSliding then requiredState = STATE_SLIDE end
+	if getgenv().Animation.isSliding then requiredState = STATE_SLIDE end
 	if isSwinging then requiredState = STATE_SWING end
 	if isWallHanging then requiredState = STATE_WALLHANG end
 
@@ -798,8 +798,8 @@ AirDivingEvent.Event:Connect(function()
 end)
 
 SlidingEvent.Event:Connect(function(enabled)
-	isSliding = enabled
-	if isSliding then
+	getgenv().Animation.isSliding = enabled
+	if getgenv().Animation.isSliding then
 		playAnimation(STATE_SLIDE, SLIDE_TRANSITION_TIME)
 	else
 		-- If the slide animation was playing, transition back to idle smoothly

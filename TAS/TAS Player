@@ -21,7 +21,7 @@ local PLAYER_NORMAL_HIPHEIGHT = 0
 local SLIDE_DURATION = 0.10 -- Seconds
 local WALK_ANIM_SPEED = 0.76
 local BUTTON_INTERACT_SIZE = Vector3.new(6, 6, 6)
-local LONG_WAIT_TIMEOUT = 30 -- Reduced from 9e6 for sanity, adjust if needed
+local LONG_WAIT_TIMEOUT = 80 -- Reduced from 9e6 for sanity, adjust if needed
 local FRAME_PROCESS_BATCH_SIZE = 60 -- How many frames to check ahead in the loop
 local MIRROR_ROTATION_Y = math.pi -- For CFrame mirroring
 
@@ -47,7 +47,7 @@ end
 
 -- // Local Player & Character Variables (Initialize Late) \\ --
 local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Character = LocalPlayer.Character or (LocalPlayer.CharacterAdded:Wait() and LocalPlayer.Character)
 local Humanoid = Character:WaitForChild("Humanoid")
 local RootPart = Character:WaitForChild("HumanoidRootPart")
 local FE2_Hitbox = Character:WaitForChild("FE2_Hitbox")
@@ -57,17 +57,27 @@ local AnimateScript = Character:WaitForChild("Animate") -- Potential wait needed
 
 -- // Environment & Modules \\ --
 local CLMAIN_ENV = getsenv(CL_MAIN_GameScript)
-local ANIMATE_ENV = getsenv(AnimateScript)
 
-if not CLMAIN_ENV or not ANIMATE_ENV then
+local function SetupAnimation()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/Animation"))()
+	return getgenv().Animation
+end
+local ANIMATE_ENV = SetupAnimation()
+
+if not CLMAIN_ENV then
     warn("TAS Player: Failed to get script environments. Aborting.")
+    CLMAIN_ENV = {
+        newAlert = function(...)
+            print(...)
+        end
+    }
     return -- Stop execution if environments aren't found
 end
 
 local NewAlert = CLMAIN_ENV.newAlert
 local PlayAnimationFunc = ANIMATE_ENV.playAnimation -- Store original function
-local FireAnimateEvent = ANIMATE_ENV.Sliding -- Assuming Sliding is the event instance [cite: 2]
--- local ToggleSwimFunc = ANIMATE_ENV.ToggleSwim -- If needed [cite: 8]
+local FireAnimateEvent = AnimateScript.Sliding -- Assuming Sliding is the event instance [cite: 2]
+--local ToggleSwimFunc = ANIMATE_ENV.ToggleSwim -- If needed [cite: 8]
 
 -- // State Variables \\ --
 local IsMirrored = false
@@ -91,8 +101,7 @@ local function CFrameMirror(cf)
     -- Note: Original code used -pi for X and Z, and kept Y. Let's stick to the original logic first:
     -- return CFrame.new(x, y, -z) * CFrame.fromEulerAnglesXYZ(-rX, rY, -rZ) -- This might be more intuitive Z mirror
     -- Original logic: CFrame.new(CCFrame[1], CCFrame[2], -CCFrame[3]) * AngC(-math.pi, CCFrame[5], -math.pi) [cite: 17]
-    return CFrame.new(x, y, -z) * CFrame.fromEulerAnglesXYZ(-math.pi, rY, -math.pi)
-
+    return CFrame.new(x, y, -z) * CFrame.fromEulerAnglesXYZ(-rX, rY, -rZ)
 end
 
 local function ShowAlert(message, color)
@@ -116,7 +125,7 @@ local function Cleanup()
 		-- Restore original functions/state
 		ANIMATE_ENV.playAnimation = PlayAnimationFunc
 		if Humanoid and Humanoid.Health > 0 then
-			--ANIMATE_ENV.playAnimation("idle", 0.1, Humanoid) -- Use stored function [cite: 14, 15]
+			ANIMATE_ENV.playAnimation("idle", 0.1, Humanoid) -- Use stored function [cite: 14, 15]
 		end
 	end
 
@@ -149,7 +158,7 @@ local function SetSlideState(isSliding)
 
     if isSliding then
         RootPart.Size = PLAYER_SLIDE_SIZE
-        FE2_Hitbox.Size = PLAYER_NORMAL_SIZE -- Keep FE2_Hitbox normal or match RootPart? Original used PLAYER_SLIDE_SIZE [cite: 2]
+        --FE2_Hitbox.Size = PLAYER_NORMAL_SIZE -- Keep FE2_Hitbox normal or match RootPart? Original used PLAYER_SLIDE_SIZE [cite: 2]
         FE2_Hitbox.Size = PLAYER_SLIDE_SIZE -- Sticking to original logic [cite: 2]
         Humanoid.HipHeight = PLAYER_SLIDE_HIPHEIGHT
     else
@@ -298,7 +307,6 @@ local function InitializeTAS()
 
     -- Find Spawn Point (Improved Robustness Needed)
     -- Original logic waits for a part named "Part" to rotate. This is highly unreliable.
-    -- A better approach would be needed, e.g., checking for SpawnLocation instances,
     -- specific naming conventions, or known offsets. Using the original as a placeholder:
     local spawnSearchTimeout = 10 -- Seconds
     local spawnStartTime = time()
@@ -462,7 +470,7 @@ local function RunPlaybackLoop(deltaTime)
 
     -- Activate Animation
     if CurrentInfo.AAnimation then
-        --ActivateAnimation(CurrentInfo.AAnimation) -- [cite: 18]
+        ActivateAnimation(CurrentInfo.AAnimation) -- [cite: 18]
     end
 
     -- Update frame index
@@ -504,8 +512,9 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     RootPart = Character:WaitForChild("HumanoidRootPart")
     FE2_Hitbox = Character:WaitForChild("FE2_Hitbox")
     AnimateScript = Character:WaitForChild("Animate") -- Wait for animate script too
-    ANIMATE_ENV = getsenv(AnimateScript) -- Re-get env
+    ANIMATE_ENV = SetupAnimation() -- Re-get env
     PlayAnimationFunc = ANIMATE_ENV and ANIMATE_ENV.playAnimation -- Re-get original func
+    FireAnimateEvent = AnimateScript.Sliding -- Re-get event
 
     Cleanup() -- Disconnect old loops/events for the previous character
 
