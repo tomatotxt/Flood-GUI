@@ -112,8 +112,8 @@ local function showAlert(message, color, duration, specialEffect)
         pcall(ClientMainScriptEnv.newAlert, message, color, duration, specialEffect)
     else
         -- Simple fallback print/warn
-        local level = (color == CONFIG.ALERT_COLORS.ERROR or color == CONFIG.ALERT_COLORS.BEHIND) and "warn" or "print"
-        _G[level](("Flood GUI Alert: %s"):format(message))
+		-- XENO Issue
+        warn(("Flood GUI Alert: %s"):format(message))
     end
 end
 
