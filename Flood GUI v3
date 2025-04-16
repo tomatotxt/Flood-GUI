@@ -17,7 +17,7 @@ local CoreGui = game:GetService("CoreGui") -- Added for potential future use or 
 local CONFIG = {
     SCRIPT_VERSION_NAME = "Flood GUI v3",
     LATEST_BUILD = 63.1,
-    DEFAULT_BRANCH = "main",
+    DEFAULT_BRANCH = "testing",
     UI_LIBRARY_URL = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
     TAS_BASE_URL = "https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/",
     TAS_PLAYER_URL_FORMAT = "https://raw.githubusercontent.com/Swelllow/Flood-GUI/%s/TAS/TAS%%20Player", -- %s for branch
@@ -704,6 +704,7 @@ local function main()
 
     State.IsLoaded = true
     print("Flood GUI Initialized.")
+	print(State.Branch)
     if State.DebugMode then
         showAlert(CONFIG.SCRIPT_VERSION_NAME .. " loaded in Debug Mode!", CONFIG.ALERT_COLORS.DEBUG)
     else
