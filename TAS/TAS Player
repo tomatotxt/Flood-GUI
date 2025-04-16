@@ -504,7 +504,8 @@ else
 end
 
 -- Handle player respawn automatically
-LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+local playerConnect
+playerConnect = LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     warn("TAS Player: Player respawned. Stopping playback and cleaning up.")
     -- Update character variables (important!)
     Character = newCharacter
@@ -517,7 +518,7 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     FireAnimateEvent = AnimateScript.Sliding -- Re-get event
 
     Cleanup() -- Disconnect old loops/events for the previous character
-
+    playerConnect:Disconnect()
     -- Optional: Automatically restart TAS on respawn?
     -- task.wait(2) -- Short delay after respawn
     -- if InitializeTAS() then

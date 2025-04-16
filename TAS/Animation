@@ -6,7 +6,14 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
+if getgenv().AnimationLoaded then
+	return
+end
+getgenv().AnimationLoaded = true
 local Character = Players.LocalPlayer.Character
+Character.Humanoid.Died:Connect(function()
+	getgenv().AnimationLoaded = false
+end)
 local AnimateScript = Character.Animate
 AnimateScript.Disabled = true
 
