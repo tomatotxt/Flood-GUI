@@ -16,6 +16,11 @@ if not Character then
 	warn("Loadstring did not supply Character or nil.")
 end
 local AnimateScript = Character.Animate
+-- Remove Old Animate Connections.
+local AnimateClone = AnimateScript:Clone()
+AnimateScript:Destroy()
+AnimateClone.Parent = Character
+
 local Humanoid = Character:WaitForChild("Humanoid")
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Torso = Character:WaitForChild("Torso")
