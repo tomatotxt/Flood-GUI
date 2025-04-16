@@ -1,363 +1,720 @@
-local Branch = (...);
-local LatestBuild = 63.1
-
-if type(Branch) ~= "string" then
-	Branch = "main";
-end
-wait = task.wait
-local LocalPlayer = game:GetService("Players").LocalPlayer
-local clmain = getsenv( LocalPlayer.PlayerScripts["CL_MAIN_GameScript"] )
-getgenv().maps = {}
-local FE2Library = nil
-local required, result = pcall(function()
-    FE2Library = require(game.ReplicatedStorage.SharedModules.FE2Library)
-end)
-if required then
-    for i, v in pairs(FE2Library.getOfficialMapData()) do
-        table.insert(getgenv().maps, v.mapName)
-    end
-
-    local highlights = LocalPlayer.PlayerGui.MenuGui.Goals.Window.Content.Pages.Highlights.Maps
-    getgenv().whatthefuckisthisyoumayaskitisaverylongvariblename = {}
-    for i, v in pairs(highlights:GetChildren()) do
-        if v.Name == "HighlightFrame" then
-            local pre = string.split(v.MapName.Text, "[")[1]
-            local mapName = pre:sub(2, #pre - 1)
-            if not table.find(getgenv().maps, mapName) then
-                table.insert(getgenv().maps, mapName)
-                table.insert(getgenv().whatthefuckisthisyoumayaskitisaverylongvariblename, mapName)
-            end
-        end
-    end
-else
-    clmain.newAlert("Exploit doesn't support REQUIRE function.", Color3.new(1,1,1))
-end
-local CurrentBuild = tonumber(game:GetService("ReplicatedStorage").Config:GetAttribute("BuildVersion"))
-if LatestBuild < CurrentBuild then
-	clmain.newAlert("Flood GUI is " .. tostring(math.round(math.abs(LatestBuild - CurrentBuild))) .. " versions behind!")
-	clmain.newAlert("Report all issues on the discord server!", Color3.new(1, 0.1, 0.1))
-else
-    clmain.newAlert("Flood GUI loaded successfully!", Color3.fromRGB(0, 255, 0))
-end
-
-if getgenv().wow and getgenv().debugmode == false then
-	clmain.newAlert('Already Executed!', Color3.new(1, 0, 0))
-	error('Already Executed')
-else
-	getgenv().wow = ''
-end
-
-local HttpService = game:GetService("HttpService")
-
-local bb = game:service'VirtualUser'
-LocalPlayer.Idled:connect(function()
-	bb:CaptureController()
-	bb:ClickButton2(Vector2.new())
-end)
-
-local Anti = game:FindFirstChild("CL_AntiExploit", true)
-if Anti then
-    Anti.Disabled = true
-end
-
-getgenv().oof = false
-local RemoteKey = -game:GetService("ReplicatedStorage").Remote.ReqPasskey:InvokeServer()
-
--- AutoLeave Connection
-game.Players.PlayerAdded:Connect(function()
-	if getgenv().autoleave == true then
-		LocalPlayer:Kick("Auto-Leave is enabled. So you were kicked because a player joined.")	
-	end
-end)
-
-print("Loaded!")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
-local colors = {
-	SchemeColor = Color3.fromRGB(0, 100, 255),
-	Background = Color3.fromRGB(40, 40, 40),
-	Header = Color3.fromRGB(30, 30, 30),
-	TextColor = Color3.fromRGB(255, 255, 255),
-	ElementColor = Color3.fromRGB(60, 60, 60)
-}
-local Window = Library.CreateLib("Flood GUI v3", colors)
-local a = Window:NewTab("Auto")
---local s = Window:NewTab("Stat Tracker")
-local l = Window:NewTab("Local-Player")
-local b = Window:NewTab("Blatant")
-local t = Window:NewTab("TAS")
-local k = Window:NewTab("Other")
-local c = Window:NewTab("Credits")
-
-local auto = a:NewSection("Auto")
---local statTracker = s:NewSection("Stat Tracker")
-local loc = l:NewSection("Local Player")
-local blatant = b:NewSection("Blatant")
-local tas = t:NewSection("TAS")
-local other = k:NewSection("Other")
-local credits = c:NewSection("Credits")
-
-getgenv().wow = true
 --[[
--- Coins Tracker All credits to Moz
-local players = game:GetService("Players")
-local localPlayer = players.LocalPlayer
-local playerGui = localPlayer.PlayerGui
-local coinsAmount = playerGui.MenuGui.Shop.Currencies.Coins.Amount
-
-local coinsLabel = statTracker:NewLabel("Coins Earned: 0")
-local initialCoins = tonumber(coinsAmount.Text)
-
--- Gems Tracker All credits to Moz
-local gemsAmount = playerGui.MenuGui.Shop.Currencies.Gems.Amount
-
-local gemsLabel = statTracker:NewLabel("Gems Earned: 0")
-local initialGems = tonumber(gemsAmount.Text)
-
--- XP Tracker All credits to Moz
-local xpEarnedAmount = playerGui.MenuGui.Goals.Window.Content.Pages.Stats.Content.xpEarned.Amount
-
-local xpLabel = statTracker:NewLabel("XP Earned: 0")
-local initialXP = tonumber(xpEarnedAmount.Text)
-
-local coinsEvent = Instance.new("BindableEvent")
-local gemsEvent = Instance.new("BindableEvent")
-local xpEvent = Instance.new("BindableEvent")
-
-coinsEvent.Event:Connect(function(coins)
-	coinsLabel:UpdateLabel("Coins Earned: " .. coins)
-end)
-
-gemsEvent.Event:Connect(function(gems)
-	gemsLabel:UpdateLabel("Gems Earned: " .. gems)
-end)
-
-xpEvent.Event:Connect(function(xp)
-	xpLabel:UpdateLabel("XP Earned: " .. xp)
-end)
-
-local function trackCoins()
-	local currentCoins = tonumber(coinsAmount.Text)
-	if initialCoins then
-		local coinsEarned = currentCoins - initialCoins
-		coinsEvent:Fire(coinsEarned)
-	else
-		initialCoins = currentCoins
-	end
-end
-
-local function trackGems()
-	local currentGems = tonumber(gemsAmount.Text)
-	if initialGems then
-		local gemsEarned = currentGems - initialGems
-		gemsEvent:Fire(gemsEarned)
-	else
-		initialGems = currentGems
-	end
-end
-
-local function trackXP()
-	local currentXP = tonumber(xpEarnedAmount.Text)
-	if initialXP then
-		local xpEarned = currentXP - initialXP
-		xpEvent:Fire(xpEarned)
-	else
-		initialXP = currentXP
-	end
-end
-
-task.spawn(function()
-	while task.wait(1) do
-		trackCoins()
-		trackGems()
-		trackXP()
-	end
-end)
-
-local startTime = os.time()
-
-local timerLabel = statTracker:NewLabel("Timer: 00:00:00")
-
-task.spawn(function()
-	while task.wait(1) do
-		local currentTime = os.time() - startTime
-		local hours = math.floor(currentTime / 3600)
-		local minutes = math.floor((currentTime % 3600) / 60)
-		local seconds = currentTime % 60
-		local timeString = string.format("%02d:%02d:%02d", hours, minutes, seconds)
-		timerLabel:UpdateLabel("Timer: " .. timeString)
-	end
-end)
+    Flood GUI v3 - Refactored
+    Description: Exploit GUI for Flood Escape 2 providing various cheats and utilities.
 ]]
-other:NewKeybind("ToggleUI", "Toggle UI with this keybind.", Enum.KeyCode.J, function()
-	if getgenv().ui == true then
-		clmain.newAlert("UI Disabled!", Color3.fromRGB(255, 0, 0))
-		getgenv().ui = false
-	else
-		clmain.newAlert("UI Enabled!", Color3.fromRGB(0, 60, 255))
-		getgenv().ui = true
-	end
-	Library:ToggleUI()
-end)
-other:NewLabel("Discord Invite")
-other:NewButton("Copy Tomato Support Server invite.", "Copies Tomato Support Server invite to clipboard!", function()
-	setclipboard("https://discord.gg/8N2M9fHJqa")
-end)
+getgenv().debugmode = true
+-- // Services //
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local VirtualUser = game:GetService("VirtualUser")
+local CoreGui = game:GetService("CoreGui") -- Added for potential future use or better UI parent checking
 
-getgenv().WS = 20
-getgenv().JP = 50
-RunService.RenderStepped:Connect(function(deltaTime)
-    LocalPlayer.Character.Humanoid.WalkSpeed = getgenv().WS 
-    LocalPlayer.Character.Humanoid.JumpPower = getgenv().JP
-end)
-getgenv().ui = true
-loc:NewSlider("Walkspeed", "Change your walkspeed!", 100, 20, function(t)
-	getgenv().WS = t
-end)
-loc:NewSlider("JumpPower", "Change your jumppower!", 200, 50, function(t)
-	getgenv().JP = t
-end)
+-- // Constants & Configuration //
+local CONFIG = {
+    SCRIPT_VERSION_NAME = "Flood GUI v3",
+    LATEST_BUILD = 63.1,
+    DEFAULT_BRANCH = "main",
+    UI_LIBRARY_URL = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
+    TAS_BASE_URL = "https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/",
+    TAS_PLAYER_URL_FORMAT = "https://raw.githubusercontent.com/Swelllow/Flood-GUI/%s/TAS/TAS%%20Player", -- %s for branch
+    DISCORD_INVITE = "https://discord.gg/8N2M9fHJqa",
+    FILES_FOLDER = "Flood-GUI",
+    TAS_SUBFOLDER = "TAS FILES",
+    DEFAULT_WALKSPEED = 20,
+    MAX_WALKSPEED = 100,
+    DEFAULT_JUMPPOWER = 50,
+    MAX_JUMPPOWER = 200,
+    TOGGLE_UI_KEY = Enum.KeyCode.J,
+    INFINITE_AIR_KEY = Enum.KeyCode.R,
+    NOCLIP_KEY = Enum.KeyCode.G,
+    AIR_JUMP_KEY = Enum.KeyCode.M,
+    SWIM_TOGGLE_KEY = Enum.KeyCode.T,
+    COLORS = {
+        SchemeColor = Color3.fromRGB(0, 100, 255),
+        Background = Color3.fromRGB(40, 40, 40),
+        Header = Color3.fromRGB(30, 30, 30),
+        TextColor = Color3.fromRGB(255, 255, 255),
+        ElementColor = Color3.fromRGB(60, 60, 60)
+    },
+    ALERT_COLORS = {
+        SUCCESS = Color3.fromRGB(0, 255, 0),
+        ERROR = Color3.fromRGB(255, 0, 0),
+        WARNING = Color3.fromRGB(255, 165, 0),
+        INFO = Color3.fromRGB(50, 100, 255),
+        WHITE = Color3.new(1, 1, 1),
+        BEHIND = Color3.new(1, 0.1, 0.1),
+        DEBUG = Color3.new(0, 0, 1),
+        RAINBOW = "rainbow" -- Special case for alert system
+    }
+}
 
---local save = getsenv(LocalPlayer.PlayerScripts["CL_MAIN_GameScript"]).takeAir
-getgenv().godmode = false
-RunService.Heartbeat:Connect(function()
-    if getgenv().godmode == true then
-        LocalPlayer.Character.Humanoid.Health = 100
-    end
-end)
-blatant:NewKeybind("Infinite Air", "Infinite Air/God Mode", Enum.KeyCode.R, function()
-	if getgenv().godmode ~= false then
-		clmain.newAlert("Infinite Air Disabled!", Color3.fromRGB(255, 0, 0))
-		getgenv().godmode = false
-		--getsenv(LocalPlayer.PlayerScripts["CL_MAIN_GameScript"]).takeAir = save
-	else
-		clmain.newAlert("Infinite Air Enabled!", Color3.fromRGB(0, 255, 0))
-		getgenv().godmode = true
-		--[[getsenv(LocalPlayer.PlayerScripts["CL_MAIN_GameScript"]).takeAir = function()
-			return 0
-		end]]
-	end
-end)
-
-getgenv().noclip = false
-blatant:NewKeybind("Noclip", "Walk through some walls!", Enum.KeyCode.G, function()
-	LocalPlayer.Character:WaitForChild("Torso").CanCollide = getgenv().noclip
-	LocalPlayer.Character:WaitForChild("HumanoidRootPart").CanCollide = getgenv().noclip
-	LocalPlayer.Character:FindFirstChildWhichIsA("UnionOperation").CanCollide = getgenv().noclip
-    getgenv().noclip = not getgenv().noclip
-	if getgenv().noclip ~= true then
-		clmain.newAlert("Noclip Disabled!", Color3.fromRGB(255, 0, 0))
-	else
-		clmain.newAlert("Noclip Enabled!", Color3.fromRGB(0, 255, 0))
-	end
-end)
-
-Legit = false
-auto:NewToggle("Auto-Play [Working]", "Requires TAS files", function(t)
-	--getgenv().play = t
-    clmain.newAlert("AUTO PLAY CURRENTLY NOT WORKING", Color3.fromRGB(255,0,0))
-end)
-getgenv().play = false
-getgenv().infjump = false
-blatant:NewKeybind("Air Jump", "Jump while freefalling!", Enum.KeyCode.M, function(t)
-	getgenv().infjump = not getgenv().infjump
-    if getgenv().infjump ~= true then
-		clmain.newAlert("Air Jump Disabled!", Color3.fromRGB(255, 0, 0))
-	else
-		clmain.newAlert("Air Jump Enabled!", Color3.fromRGB(0, 255, 0))
-	end
-end)
-UIS.InputBegan:connect(function(UserInput, Typed)
-	if infjump == true and UserInput.KeyCode == Enum.KeyCode.Space or UserInput.KeyCode == Enum.KeyCode.ButtonA and not Typed then
-        local RootPart = LocalPlayer.Character.HumanoidRootPart
-        local OldVel = RootPart.Velocity
-		RootPart.Velocity = Vector3.new(OldVel.X, 50, OldVel.Z)
-	end
-end)
-if getgenv().isfolder and not isfolder("Flood-GUI/TAS FILES") then
-	makefolder("Flood-GUI/TAS FILES")
+-- // Local Player & Environment //
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    Players.LocalPlayerAdded:Wait()
+    LocalPlayer = Players.LocalPlayer
 end
-auto:NewButton("Download TAS files", "Downloads Required TAS files!", function()
-	for i, v in pairs(maps) do
-		local map = HttpService:UrlEncode(v)
-		local su = isfile("Flood-GUI/TAS FILES/" .. v .. ".json")
-		if su == true then
-			clmain.newAlert(v .. " TAS file already exists!", Color3.fromRGB(50, 100, 255))
-		else
-			local s, r = pcall(function()
-				local tas = game:HttpGet("https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/" .. map .. ".json")
-				if not string.find(tas, "CFrame") then
-					error(v .. ' file not exist')
-				end
-				writefile("Flood-GUI/TAS FILES/" .. v .. ".json", tas, true) -- minfile(tas) removed
-			end)
-			if s then
-				clmain.newAlert("Downloaded " .. v .. " TAS file succesfully!", Color3.fromRGB(0, 255, 0))
-			else
-				print(r)
-				clmain.newAlert("Failed to download " .. v .. " TAS file. :(", Color3.fromRGB(255, 0, 0))
-			end
-		end
-		wait()
-	end
-	clmain.newAlert("Finished Downloading TAS files")
-end)
-tas:NewButton("Rejoin", "Rejoin game so you can create another TAS", function()
-	game:GetService("TeleportService"):Teleport(LocalPlayer)
-end)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
-tas:NewButton("Create-TAS", "Create a TAS, Press then enter lift.", function()
-    --[[
-	Decoding, Data = pcall(loadstring, game:HttpGet("https://raw.github.com/ImMejor35/whitelist/main/" .. tostring(table.find({
-		185993918,
-		2294273310,
-		3407520303
-	}, game:GetService("Players").LocalPlayer.UserId) ~= nil)));
-	Data("Flood-GUI/TAS/TAS Record Voiz")
-    ]]
-    clmain.newAlert("CREATE TAS CURRENTLY NOT WORKING", Color3.fromRGB(255,0,0))
-end)
+-- Accessing client environment safely
+local ClientMainScriptEnv = nil
+local ok, env = pcall(function() return getsenv(PlayerScripts:WaitForChild("CL_MAIN_GameScript")) end)
+if ok then
+    ClientMainScriptEnv = env
+else
+    warn("Flood GUI: Failed to get environment for CL_MAIN_GameScript.", r)
+    -- Fallback or error handling if needed, maybe a custom alert function
+end
 
-if getgenv().hookmetamethod then
-    local oldindex
-    oldindex = hookmetamethod(game, "__index", function(self, b)
-        if tostring(self) == "HumanoidRootPart" and b == "Position" and not checkcaller() then
-            if getgenv().swim == true then
-                return Vector3.new(-23, -153, 0) -- position of lobby water
-            else
-                return oldindex(self, b) -- normal player position
+-- // Script State //
+-- Using a local table for state instead of getgenv() for most things
+local State = {
+    IsLoaded = false,       -- Prevent re-execution
+    DebugMode = getgenv().debugmode or false, -- Allow external setting for debug
+    Branch = ... == "string" and (...) or CONFIG.DEFAULT_BRANCH,
+    Maps = {},
+    HighlightOnlyMaps = {}, -- Maps found only in highlights, formerly 'whatthefuckisthisyoumayaskitisaverylongvariblename'
+    WalkSpeed = CONFIG.DEFAULT_WALKSPEED,
+    JumpPower = CONFIG.DEFAULT_JUMPPOWER,
+    GodModeEnabled = false,
+    NoclipEnabled = false,
+    AirJumpEnabled = false,
+    AutoPlayEnabled = false, -- Formerly 'play'
+    SwimEnabled = false,     -- For TAS recording hook
+    AutoLeaveEnabled = false,
+    UIEnabled = true,
+    FE2Library = nil,       -- Store the loaded library
+    RemoteKey = nil,        -- Store the remote key
+    CurrentBuild = nil,
+    KavoLibrary = nil,
+    UI = {}                 -- Store references to UI elements if needed later
+}
+getgenv().FloodGUI_Loaded = false
+-- Check if already executed
+if getgenv().FloodGUI_Loaded then
+    if ClientMainScriptEnv and ClientMainScriptEnv.newAlert then
+        ClientMainScriptEnv.newAlert('Flood GUI Already Executed!', CONFIG.ALERT_COLORS.ERROR)
+    else
+        warn("Flood GUI Already Executed!") -- Fallback if alert unavailable
+    end
+    return -- Stop execution
+end
+getgenv().FloodGUI_Loaded = true -- Mark as loaded using getgenv for simplicity across executions
+
+-- // Utility Functions //
+local function showAlert(message, color, duration, specialEffect)
+    if ClientMainScriptEnv and ClientMainScriptEnv.newAlert then
+        pcall(ClientMainScriptEnv.newAlert, message, color, duration, specialEffect)
+    else
+        -- Simple fallback print/warn
+        local level = (color == CONFIG.ALERT_COLORS.ERROR or color == CONFIG.ALERT_COLORS.BEHIND) and "warn" or "print"
+        _G[level](("Flood GUI Alert: %s"):format(message))
+    end
+end
+
+local function safeHttpGet(url)
+    local success, result = pcall(game.HttpGet, game, url)
+    if success then
+        return result
+    else
+        warn("HTTP GET failed for:", url, "| Error:", result)
+        return nil
+    end
+end
+
+local function loadLibrary(url)
+    local source = safeHttpGet(url)
+    if source then
+        local success, lib = pcall(loadstring(source))
+        if success and type(lib) == "function" then
+             local ok, result = pcall(lib)
+             if ok then return result else warn("Error executing library:", result) end
+        elseif type(lib) == "table" then
+            return lib
+        else
+             warn("Failed to load library source or source is not a function. Error:", lib or "Unknown loadstring error")
+        end
+    end
+    return nil
+end
+
+-- // Initialization Functions //
+local function loadFE2Library()
+    local success, library = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("SharedModules"):WaitForChild("FE2Library"))
+    end)
+    if success then
+        State.FE2Library = library
+        return true
+    else
+        showAlert("Exploit doesn't support REQUIRE function or FE2Library not found.", CONFIG.ALERT_COLORS.WHITE)
+        warn("FE2Library require failed:", library)
+        return false
+    end
+end
+
+local function populateMaps()
+    if not State.FE2Library then return end
+
+    -- Get official maps
+    local officialMaps = State.FE2Library.getOfficialMapData and State.FE2Library.getOfficialMapData() or {}
+    for _, mapData in pairs(officialMaps) do
+        if mapData.mapName and not table.find(State.Maps, mapData.mapName) then
+            table.insert(State.Maps, mapData.mapName)
+        end
+    end
+
+    -- Get maps from highlights (potentially unlisted/custom maps in rotation)
+    local highlightsContainer = PlayerGui:FindFirstChild("MenuGui", true)
+                              and PlayerGui.MenuGui:FindFirstChild("Goals", true)
+                             and PlayerGui.MenuGui.Goals:FindFirstChild("Window", true)
+                             and PlayerGui.MenuGui.Goals.Window:FindFirstChild("Content", true)
+                             and PlayerGui.MenuGui.Goals.Window.Content:FindFirstChild("Pages", true)
+                             and PlayerGui.MenuGui.Goals.Window.Content.Pages:FindFirstChild("Highlights", true)
+                             and PlayerGui.MenuGui.Goals.Window.Content.Pages.Highlights:FindFirstChild("Maps", true)
+
+    if highlightsContainer then
+        for _, frame in pairs(highlightsContainer:GetChildren()) do
+            if frame:IsA("Frame") and frame.Name == "HighlightFrame" and frame:FindFirstChild("MapName") then
+                -- Use string.match for potentially more robust parsing
+                local mapNameText = frame.MapName.Text
+                local mapName = string.match(mapNameText, "%[(.+)%]") -- Matches text inside square brackets
+                if mapName then
+                    mapName = mapName:gsub("%s*$", "") -- Trim trailing whitespace if any
+                    if not table.find(State.Maps, mapName) then
+                        table.insert(State.Maps, mapName)
+                        table.insert(State.HighlightOnlyMaps, mapName)
+                        print("Found highlight-only map:", mapName)
+                    end
+                else
+                     warn("Could not parse map name from highlight:", mapNameText)
+                end
             end
         end
-        return oldindex(self, b)
+    else
+        warn("Could not find Highlights map container in PlayerGui.")
+    end
+    table.sort(State.Maps) -- Keep the list sorted
+    print("Total unique maps found:", #State.Maps)
+end
+
+local function checkBuildVersion()
+    local configInstance = ReplicatedStorage:FindFirstChild("Config")
+    if configInstance then
+        State.CurrentBuild = tonumber(configInstance:GetAttribute("BuildVersion"))
+        if State.CurrentBuild and CONFIG.LATEST_BUILD < State.CurrentBuild then
+            local diff = math.round(math.abs(CONFIG.LATEST_BUILD - State.CurrentBuild))
+            showAlert(("%s is %d version(s) behind!"):format(CONFIG.SCRIPT_VERSION_NAME, diff), CONFIG.ALERT_COLORS.WARNING)
+            showAlert("Report all issues on the discord server!", CONFIG.ALERT_COLORS.BEHIND)
+        else
+             showAlert(("%s loaded successfully!"):format(CONFIG.SCRIPT_VERSION_NAME), CONFIG.ALERT_COLORS.SUCCESS)
+        end
+    else
+        warn("Could not find ReplicatedStorage.Config to check build version.")
+        showAlert("Could not verify build version.", CONFIG.ALERT_COLORS.WARNING)
+    end
+end
+
+local function setupAntiIdle()
+    if VirtualUser then
+        LocalPlayer.Idled:Connect(function()
+            pcall(function() -- Wrap in pcall in case of permission issues or errors
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end)
+        print("Anti-Idle Initialized")
+    else
+        warn("VirtualUser service not available for Anti-Idle.")
+    end
+end
+
+local function disableAntiExploit()
+    -- Attempt to disable common anti-exploit scripts
+    local antiExploitScripts = {
+        "CL_AntiExploit",
+        "FE2_AntiExploit", -- Add other potential names
+        "ClientAntiCheat"
+    }
+    for _, scriptName in ipairs(antiExploitScripts) do
+        local anti = game:FindFirstChild(scriptName, true)
+        if anti then
+            local success, err = pcall(function() anti.Disabled = true end)
+            if success then
+                print("Disabled AntiExploit:", scriptName)
+            else
+                warn("Failed to disable AntiExploit", scriptName, ":", err)
+                -- Maybe try destroying it? Be cautious.
+                -- pcall(function() anti:Destroy() end)
+            end
+        end
+    end
+end
+
+local function getRemoteKey()
+    local remote = ReplicatedStorage:FindFirstChild("Remote")
+    local reqPasskey = remote and remote:FindFirstChild("ReqPasskey")
+    if reqPasskey and reqPasskey:IsA("RemoteFunction") then
+        local success, key = pcall(reqPasskey.InvokeServer, reqPasskey)
+        if success then
+            -- The original code negated the key, assuming it's intentional
+            State.RemoteKey = -key
+            print("Obtained Remote Key.")
+        else
+            warn("Failed to invoke ReqPasskey:", key)
+            showAlert("Failed to obtain remote key.", CONFIG.ALERT_COLORS.ERROR)
+        end
+    else
+        warn("Could not find Remote.ReqPasskey RemoteFunction.")
+        showAlert("Could not find remote function for key.", CONFIG.ALERT_COLORS.ERROR)
+    end
+end
+
+-- // Core Logic Functions //
+local function updateMovement()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        -- Only set if the value actually differs to potentially reduce network traffic/overhead
+        if hum.WalkSpeed ~= State.WalkSpeed then
+            hum.WalkSpeed = State.WalkSpeed
+        end
+        if hum.JumpPower ~= State.JumpPower then
+            hum.JumpPower = State.JumpPower
+        end
+    end
+end
+
+local function applyGodMode()
+    if State.GodModeEnabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health < 100 then
+            hum.Health = 100
+            -- Optionally, could also manage MaxHealth if needed
+            -- if hum.MaxHealth < 100 then hum.MaxHealth = 100 end
+        end
+        -- The original script commented out overriding 'takeAir'.
+        -- This is safer as it doesn't modify game scripts directly.
+        -- If 'takeAir' override is absolutely needed, it requires getsenv/setsenv or hooks.
+    end
+end
+
+local function applyNoclip()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local partsToNoclip = {}
+    local torso = char:FindFirstChild("Torso")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if torso then table.insert(partsToNoclip, torso) end
+    if hrp then table.insert(partsToNoclip, hrp) end
+
+    -- Find character parts that are BaseParts (handling potential variations)
+    for _, part in ipairs(char:GetChildren()) do
+        if part:IsA("BasePart") and part ~= hrp and part ~= torso then
+            -- Avoid double-adding, check if it's significant (e.g., has collision)
+            if part.CanCollide and part.Mass > 0.1 then
+                table.insert(partsToNoclip, part)
+            end
+        -- Handling the UnionOperation case specifically mentioned in the original code
+        elseif part:IsA("UnionOperation") then
+             table.insert(partsToNoclip, part)
+        end
+    end
+
+    local shouldCollide = not State.NoclipEnabled -- If noclip is ON, collision should be OFF
+    for _, part in ipairs(partsToNoclip) do
+        -- Check if part still exists before modifying
+        if part and part.Parent then
+             part.CanCollide = shouldCollide
+        end
+    end
+end
+
+-- // UI Setup //
+local function initializeUI()
+    State.KavoLibrary = loadLibrary(CONFIG.UI_LIBRARY_URL)
+    if not State.KavoLibrary then
+        showAlert("Failed to load Kavo UI Library!", CONFIG.ALERT_COLORS.ERROR)
+        return
+    end
+
+    local Window = State.KavoLibrary.CreateLib(CONFIG.SCRIPT_VERSION_NAME, CONFIG.COLORS)
+    State.UI.Window = Window -- Store reference if needed
+
+    -- Create Tabs
+    local tabAuto = Window:NewTab("Auto")
+    local tabLocalPlayer = Window:NewTab("Local-Player")
+    local tabBlatant = Window:NewTab("Blatant")
+    local tabTAS = Window:NewTab("TAS")
+    local tabOther = Window:NewTab("Other")
+    local tabCredits = Window:NewTab("Credits")
+    -- local tabStats = Window:NewTab("Stat Tracker") -- Uncomment if re-implementing stats
+
+    -- Create Sections
+    local secAuto = tabAuto:NewSection("Auto")
+    local secLocalPlayer = tabLocalPlayer:NewSection("Local Player")
+    local secBlatant = tabBlatant:NewSection("Blatant")
+    local secTAS = tabTAS:NewSection("TAS")
+    local secOther = tabOther:NewSection("Other")
+    local secCredits = tabCredits:NewSection("Credits")
+    -- local secStats = tabStats:NewSection("Stat Tracker") -- Uncomment if re-implementing stats
+
+    -- == Auto Tab ==
+    secAuto:NewToggle("Auto-Play [WIP]", "Requires downloaded TAS files. Currently EXPERIMENTAL.", function(enabled)
+        State.AutoPlayEnabled = enabled
+        if enabled then
+             showAlert("Auto-Play Enabled (Experimental).", CONFIG.ALERT_COLORS.INFO)
+             -- The loading loop will handle starting the player script
+        else
+             showAlert("Auto-Play Disabled.", CONFIG.ALERT_COLORS.INFO)
+        end
+        -- Consider loading the TAS player *here* once if the live-reload isn't strictly needed
+        -- if enabled and not State.TasPlayerFunction then
+        --     -- Load and store the function
+        -- end
+    end)
+    State.AutoPlayEnabled = false -- Set initial state
+
+    secAuto:NewButton("Download TAS files", "Downloads required TAS files from GitHub.", function()
+        local tasFolderPath = CONFIG.FILES_FOLDER .. "/" .. CONFIG.TAS_SUBFOLDER
+        if getgenv().isfolder and not isfolder(tasFolderPath) then
+            makefolder(tasFolderPath)
+            print("Created TAS folder:", tasFolderPath)
+        elseif not getgenv().isfolder then
+             showAlert("File system operations (isfolder/makefolder) not supported by your exploit.", CONFIG.ALERT_COLORS.WARNING)
+             -- Decide if download should proceed without folder check, maybe warn user?
+        end
+
+        if not getgenv().writefile or not getgenv().isfile then
+             showAlert("File system operations (writefile/isfile) not supported.", CONFIG.ALERT_COLORS.ERROR)
+             return
+        end
+
+        showAlert("Starting TAS file download...", CONFIG.ALERT_COLORS.INFO)
+        task.spawn(function() -- Use task.spawn to avoid blocking UI
+            local downloadedCount = 0
+            local failedCount = 0
+            for _, mapName in ipairs(State.Maps) do
+                local encodedMapName = HttpService:UrlEncode(mapName)
+                local filePath = tasFolderPath .. "/" .. mapName .. ".json"
+                local url = CONFIG.TAS_BASE_URL .. encodedMapName .. ".json"
+
+                if isfile(filePath) then
+                    showAlert(mapName .. " TAS file already exists.", CONFIG.ALERT_COLORS.INFO, 2) -- Shorter duration
+                else
+                    local tasData = safeHttpGet(url)
+                    if tasData and string.find(tasData, "CFrame", 1, true) then -- Check if it looks like a valid TAS file
+                        local success, err = pcall(writefile, filePath, tasData)
+                        if success then
+                            showAlert("Downloaded " .. mapName .. " TAS.", CONFIG.ALERT_COLORS.SUCCESS, 2)
+                            downloadedCount = downloadedCount + 1
+                        else
+                            showAlert("Failed to write " .. mapName .. " TAS file. Error: " .. tostring(err), CONFIG.ALERT_COLORS.ERROR)
+                            failedCount = failedCount + 1
+                        end
+                    else
+                        if tasData == nil then
+                             showAlert("Failed to download " .. mapName .. " (Network Error).", CONFIG.ALERT_COLORS.ERROR)
+                        else
+                            showAlert("Failed to download " .. mapName .. " TAS (Invalid or Not Found Online).", CONFIG.ALERT_COLORS.ERROR)
+                        end
+                        failedCount = failedCount + 1
+                    end
+                end
+                task.wait(0.1) -- Small delay between downloads
+            end
+            showAlert(("Finished downloading TAS files. Success: %d, Failed/Skipped: %d"):format(downloadedCount, failedCount + (#State.Maps - downloadedCount - failedCount)), CONFIG.ALERT_COLORS.INFO)
+        end)
+    end)
+
+    -- == Local Player Tab ==
+    secLocalPlayer:NewSlider("Walkspeed", "Changes your movement speed.", CONFIG.MAX_WALKSPEED, CONFIG.DEFAULT_WALKSPEED, function(value)
+        State.WalkSpeed = math.max(1, value) -- Ensure walkspeed is at least 1
+    end)
+
+    secLocalPlayer:NewSlider("JumpPower", "Changes your jump height.", CONFIG.MAX_JUMPPOWER, CONFIG.DEFAULT_JUMPPOWER, function(value)
+        State.JumpPower = math.max(0, value) -- Ensure jumppower isn't negative
+    end)
+    -- == Blatant Tab ==
+    secBlatant:NewKeybind("Infinite Air", "Prevents drowning / God Mode.", CONFIG.INFINITE_AIR_KEY, function()
+        State.GodModeEnabled = not State.GodModeEnabled
+        showAlert("Infinite Air " .. (State.GodModeEnabled and "Enabled" or "Disabled"), State.GodModeEnabled and CONFIG.ALERT_COLORS.SUCCESS or CONFIG.ALERT_COLORS.ERROR)
+        -- Logic is handled in Heartbeat
+    end)
+
+    secBlatant:NewKeybind("Noclip", "Allows walking through walls.", CONFIG.NOCLIP_KEY, function()
+        State.NoclipEnabled = not State.NoclipEnabled
+        applyNoclip() -- Apply immediately
+        showAlert("Noclip " .. (State.NoclipEnabled and "Enabled" or "Disabled"), State.NoclipEnabled and CONFIG.ALERT_COLORS.SUCCESS or CONFIG.ALERT_COLORS.ERROR)
+    end)
+
+    secBlatant:NewKeybind("Air Jump", "Allows jumping while mid-air.", CONFIG.AIR_JUMP_KEY, function()
+        State.AirJumpEnabled = not State.AirJumpEnabled
+        showAlert("Air Jump " .. (State.AirJumpEnabled and "Enabled" or "Disabled"), State.AirJumpEnabled and CONFIG.ALERT_COLORS.SUCCESS or CONFIG.ALERT_COLORS.ERROR)
+        -- Logic is handled in UserInputService.InputBegan
+    end)
+
+    -- == TAS Tab ==
+    secTAS:NewButton("Create-TAS [WIP]", "Create a TAS recording. (Currently Disabled)", function()
+        showAlert("CREATE TAS CURRENTLY NOT WORKING / DISABLED.", CONFIG.ALERT_COLORS.WARNING)
+        --[[ -- Original TAS Creation code (requires external script/whitelist)
+        Decoding, Data = pcall(loadstring, safeHttpGet("https://raw.github.com/ImMejor35/whitelist/main/" .. tostring(table.find({
+            185993918,
+            2294273310,
+            3407520303
+        }, LocalPlayer.UserId) ~= nil)));
+        if Decoding then
+             Data("Flood-GUI/TAS/TAS Record Voiz") -- Assuming this function exists globally or is returned
+        else
+             showAlert("Failed to load TAS recorder.", CONFIG.ALERT_COLORS.ERROR)
+        end
+        ]]
+    end)
+
+    secTAS:NewKeybind("Toggle Swim [TAS]", "For TAS recording. Simulates being in water.", CONFIG.SWIM_TOGGLE_KEY, function()
+         State.SwimEnabled = not State.SwimEnabled
+         showAlert("TAS Swim Mode " .. (State.SwimEnabled and "Enabled" or "Disabled"), State.SwimEnabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
+         -- Logic is handled by the __index hook (if available and enabled)
+    end)
+
+    secTAS:NewToggle("Auto-Leave", "Automatically leaves the game if another player joins.", function(enabled)
+        State.AutoLeaveEnabled = enabled
+        showAlert("Auto-Leave " .. (enabled and "Enabled" or "Disabled"), enabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
+        -- Logic handled in Players.PlayerAdded
+    end)
+    State.AutoLeaveEnabled = false -- Set Initial Value
+     secTAS:NewButton("Rejoin Server", "Teleports you to a new server of the same game.", function()
+        showAlert("Attempting to rejoin...", CONFIG.ALERT_COLORS.INFO)
+        pcall(TeleportService.Teleport, TeleportService, game.PlaceId, LocalPlayer)
+        -- Consider adding error handling/feedback if Teleport fails
+    end)
+
+    -- == Other Tab ==
+    secOther:NewKeybind("Toggle UI", "Toggles the GUI visibility.", CONFIG.TOGGLE_UI_KEY, function()
+        State.UIEnabled = not State.UIEnabled
+        if State.KavoLibrary and State.KavoLibrary.ToggleUI then
+             State.KavoLibrary.ToggleUI()
+             showAlert("UI " .. (State.UIEnabled and "Enabled" or "Disabled"), State.UIEnabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
+        else
+             warn("Kavo Library ToggleUI function not available.")
+        end
+    end)
+
+    secOther:NewLabel("Discord Invite")
+    secOther:NewButton("Copy Support Server Invite", "Copies the Discord invite link to your clipboard.", function()
+        if setclipboard then
+            pcall(setclipboard, CONFIG.DISCORD_INVITE)
+            showAlert("Discord invite copied to clipboard!", CONFIG.ALERT_COLORS.SUCCESS)
+        else
+            showAlert("Clipboard access not supported by your exploit.", CONFIG.ALERT_COLORS.WARNING)
+        end
+    end)
+
+    -- == Credits Tab ==
+    secCredits:NewLabel("TAS Record/Playback: Voiz#5668")
+    secCredits:NewLabel("Reverse Engineering/Base GUI: Tomato")
+    secCredits:NewLabel("Stat Tracker Concept & Misc: Moz") -- Added note about concept if not implemented
+    secCredits:NewLabel("UI Library: xHeptc (Kavo)")
+    secCredits:NewLabel("Refactoring & Improvements: AI")
+
+    -- == Stat Tracker Section (Optional - Uncomment and integrate if needed) ==
+    --[[
+    local secStats = tabStats:NewSection("Stat Tracker")
+    local statElements = {}
+
+    local function setupStatTracker()
+        local shop = PlayerGui:FindFirstChild("MenuGui", true) and PlayerGui.MenuGui:FindFirstChild("Shop", true)
+        local goals = PlayerGui:FindFirstChild("MenuGui", true) and PlayerGui.MenuGui:FindFirstChild("Goals", true)
+
+        local coinsAmount = shop and shop:FindFirstChild("Currencies", true) and shop.Currencies:FindFirstChild("Coins", true) and shop.Currencies.Coins:FindFirstChild("Amount", true)
+        local gemsAmount = shop and shop:FindFirstChild("Currencies", true) and shop.Currencies:FindFirstChild("Gems", true) and shop.Currencies.Gems:FindFirstChild("Amount", true)
+        local xpAmount = goals and goals:FindFirstChild("Window", true) --... path to xpEarned.Amount
+
+        if not coinsAmount or not gemsAmount or not xpAmount then
+            secStats:NewLabel("Stat Tracker Error: Could not find UI elements.")
+            return
+        end
+
+        local initialValues = {
+            Coins = tonumber(coinsAmount.Text) or 0,
+            Gems = tonumber(gemsAmount.Text) or 0,
+            XP = tonumber(xpAmount.Text) or 0,
+            StartTime = os.time()
+        }
+
+        statElements.CoinsLabel = secStats:NewLabel("Coins Earned: 0")
+        statElements.GemsLabel = secStats:NewLabel("Gems Earned: 0")
+        statElements.XPLabel = secStats:NewLabel("XP Earned: 0")
+        statElements.TimerLabel = secStats:NewLabel("Session Time: 00:00:00")
+
+        local function updateStats()
+            local currentCoins = tonumber(coinsAmount.Text) or initialValues.Coins
+            local currentGems = tonumber(gemsAmount.Text) or initialValues.Gems
+            local currentXP = tonumber(xpAmount.Text) or initialValues.XP
+
+            statElements.CoinsLabel:UpdateLabel("Coins Earned: " .. (currentCoins - initialValues.Coins))
+            statElements.GemsLabel:UpdateLabel("Gems Earned: " .. (currentGems - initialValues.Gems))
+            statElements.XPLabel:UpdateLabel("XP Earned: " .. (currentXP - initialValues.XP))
+
+            local elapsed = os.time() - initialValues.StartTime
+            local hours = math.floor(elapsed / 3600)
+            local minutes = math.floor((elapsed % 3600) / 60)
+            local seconds = elapsed % 60
+            statElements.TimerLabel:UpdateLabel(string.format("Session Time: %02d:%02d:%02d", hours, minutes, seconds))
+        end
+
+        -- Return the update function to be called periodically
+        return updateStats
+    end
+
+    local updateStatsFunc = setupStatTracker()
+    if updateStatsFunc then
+        RunService.Heartbeat:Connect(function()
+             if State.UIEnabled and updateStatsFunc then -- Only update if UI is visible and func exists
+                 -- Add a throttle if Heartbeat is too frequent
+                 -- local lastUpdate = lastUpdate or 0
+                 -- if tick() - lastUpdate > 0.5 then -- Update every half second
+                 --    updateStatsFunc()
+                 --    lastUpdate = tick()
+                 -- end
+                 updateStatsFunc() -- Or update every heartbeat if performance allows
+             end
+        end)
+    end
+    ]]-- End Stat Tracker Section
+end
+
+-- // Event Handlers //
+local function setupEventHandlers()
+    -- Movement & God Mode Loop
+    RunService.Heartbeat:Connect(function(deltaTime)
+        pcall(function() -- Wrap in pcall for safety
+             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                 updateMovement()
+                 applyGodMode()
+             end
+        end)
+    end)
+
+    -- Input Handling (Air Jump)
+    UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+        if gameProcessedEvent then return end -- Don't process if game handled it (e.g., typing in chat)
+
+        if State.AirJumpEnabled and (input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA) then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+            if hum and hrp and hum:GetState() == Enum.HumanoidStateType.Freefall then
+                 -- Apply an upward velocity impulse for the jump
+                 local currentVelocity = hrp.Velocity
+                 hrp.Velocity = Vector3.new(currentVelocity.X, State.JumpPower * 0.8, currentVelocity.Z) -- Adjust multiplier as needed
+            end
+        end
+    end)
+
+    -- Auto Leave Handler
+    Players.PlayerAdded:Connect(function(player)
+        if State.AutoLeaveEnabled and player ~= LocalPlayer then
+            showAlert(("Player '%s' joined. Auto-leaving as configured."):format(player.Name), CONFIG.ALERT_COLORS.WARNING)
+            task.wait(0.5) -- Short delay before kicking
+            pcall(LocalPlayer.Kick, LocalPlayer, "Flood GUI: Auto-Leave triggered by player joining.")
+        end
+    end)
+
+    -- Hook for TAS Swim Mode (Requires hookmetamethod)
+    if getgenv().hookmetamethod then
+        local oldIndex
+        oldIndex = hookmetamethod(game, "__index", function(self, index)
+            -- Check if we're indexing "Position" on a "HumanoidRootPart" AND Swim Mode is enabled
+            -- Use 'tostring' check as it's common in these hooks, but be aware it can be spoofed.
+            -- Added checkcaller() as in original script, assuming it's needed for exploit context.
+            if State.SwimEnabled and index == "Position" and tostring(self) == "HumanoidRootPart" and not checkcaller() then
+                -- Return a position known to be inside lobby water (adjust if needed)
+                return Vector3.new(-23, -153, 0)
+            end
+            -- Otherwise, call the original __index metamethod
+            return oldIndex(self, index)
+        end)
+        print("Swim mode hook initialized.")
+    else
+        warn("hookmetamethod not available. TAS Swim Toggle will not function.")
+    end
+
+end
+
+-- // TAS Player Loop //
+local function runTASPlayerLoop()
+    -- This loop attempts to load and execute the TAS player script repeatedly
+    -- if AutoPlay is enabled. This is INEFFICIENT but matches original behavior
+    -- (likely for live updates from the GitHub source without re-running the main GUI).
+    local tasPlayerUrl = CONFIG.TAS_PLAYER_URL_FORMAT:format(State.Branch)
+    local lastLoadAttempt = 0
+    local loadInterval = 2 -- Seconds between load attempts when active
+
+    task.spawn(function()
+        while task.wait(0.5) do -- Check state periodically
+            if State.AutoPlayEnabled and tick() - lastLoadAttempt > loadInterval then
+                lastLoadAttempt = tick()
+                local playerSource = safeHttpGet(tasPlayerUrl)
+                if playerSource then
+                    local success, err = pcall(loadstring(playerSource))
+                    if not success then
+                        warn("Error loading/running TAS player script:", err)
+                        -- Optionally disable autoplay on error?
+                        -- State.AutoPlayEnabled = false
+                        -- showAlert("Disabled Auto-Play due to script error.", CONFIG.ALERT_COLORS.ERROR)
+                    end
+                else
+                    warn("Failed to download TAS player script.")
+                    -- Optionally disable autoplay on error?
+                end
+            end
+        end
     end)
 end
-getgenv().swim = false
-tas:NewKeybind("Toggle Swim", "Only works while creating TAS.", Enum.KeyCode.T, function()
-	getgenv().swim = not getgenv().swim
-end)
 
-tas:NewToggle("Auto-Leave", "Automatically leaves when player joins!", function(toggleValue)
-	getgenv().autoleave = toggleValue
-end)
-credits:NewLabel("TAS script by Voiz#5668 | Reverse Engineered by Tomato")
-credits:NewLabel("Stat Tracker & other small things by Moz")
-credits:NewLabel("Everything else by Tomato")
-wait()
-if debugmode == true then
-	clmain.newAlert("Flood GUI v3 loaded in Debug Mode!", Color3.new(0, 0, 1))
-else
-	clmain.newAlert("Flood GUI v3 Loaded!", nil, nil, "rainbow")
+-- // Main Execution //
+local function main()
+    print("Initializing Flood GUI...")
+
+    if not loadFE2Library() then
+        showAlert("FE2Library failed to load. Some features (like map list) may be unavailable.", CONFIG.ALERT_COLORS.WARNING)
+        -- Decide whether to continue execution or halt
+    end
+
+    populateMaps()
+    checkBuildVersion()
+    setupAntiIdle()
+    disableAntiExploit()
+    getRemoteKey()
+
+    initializeUI() -- Setup the GUI
+    setupEventHandlers() -- Connect event listeners
+
+    -- Start the TAS player loading loop (only if AutoPlay is intended to work this way)
+    runTASPlayerLoop()
+
+    State.IsLoaded = true
+    print("Flood GUI Initialized.")
+    if State.DebugMode then
+        showAlert(CONFIG.SCRIPT_VERSION_NAME .. " loaded in Debug Mode!", CONFIG.ALERT_COLORS.DEBUG)
+    else
+        showAlert(CONFIG.SCRIPT_VERSION_NAME .. " Initialized!", nil, nil, CONFIG.ALERT_COLORS.RAINBOW)
+    end
 end
 
--- this weird loop at the end system i guess
-while task.wait() do
-	local S, r = pcall(function()
-		if getgenv().play ~= false then
-			loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/" .. Branch .. "/TAS/TAS%20Player"))()
-		end
-	end)
-	if S ~= true then
-		print(r)
-	end
+-- Run the main function safely
+local success, err = pcall(main)
+if not success then
+    warn("FATAL ERROR during Flood GUI initialization:", err)
+    showAlert("Flood GUI failed to initialize!", CONFIG.ALERT_COLORS.ERROR)
+    getgenv().FloodGUI_Loaded = false -- Allow re-execution attempt if it failed critically
 end
