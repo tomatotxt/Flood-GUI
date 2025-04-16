@@ -17,9 +17,11 @@ if not Character then
 end
 local AnimateScript = Character.Animate
 -- Remove Old Animate Connections.
+AnimateScript.Disabled = true
 local AnimateClone = AnimateScript:Clone()
 AnimateScript:Destroy()
 AnimateClone.Parent = Character
+local AnimateScript = AnimateClone
 
 local Humanoid = Character:WaitForChild("Humanoid")
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
