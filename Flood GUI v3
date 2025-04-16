@@ -17,7 +17,7 @@ local CoreGui = game:GetService("CoreGui") -- Added for potential future use or 
 local CONFIG = {
     SCRIPT_VERSION_NAME = "Flood GUI v3",
     LATEST_BUILD = 63.1,
-    DEFAULT_BRANCH = "testing",
+    DEFAULT_BRANCH = "main",
     UI_LIBRARY_URL = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
     TAS_BASE_URL = "https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/",
     TAS_PLAYER_URL_FORMAT = "https://raw.githubusercontent.com/Swelllow/Flood-GUI/%s/TAS/TAS%%20Player", -- %s for branch
@@ -366,23 +366,23 @@ local function initializeUI()
     local secCredits = tabCredits:NewSection("Credits")
     -- local secStats = tabStats:NewSection("Stat Tracker") -- Uncomment if re-implementing stats
 
-    -- ==  Tab ==
-    sec:NewToggle("-Play [WIP]", "Requires downloaded TAS files. Currently EXPERIMENTAL.", function(enabled)
-        State.PlayEnabled = enabled
+    -- == Auto Tab ==
+    secAuto:NewToggle("Auto-Play [WIP]", "Requires downloaded TAS files. Currently EXPERIMENTAL.", function(enabled)
+        State.AutoPlayEnabled = enabled
         if enabled then
-             showAlert("-Play Enabled (Experimental).", CONFIG.ALERT_COLORS.INFO)
+             showAlert("Auto-Play Enabled (Experimental).", CONFIG.ALERT_COLORS.INFO)
              -- The loading loop will handle starting the player script
         else
-             showAlert("-Play Disabled.", CONFIG.ALERT_COLORS.INFO)
+             showAlert("Auto-Play Disabled.", CONFIG.ALERT_COLORS.INFO)
         end
         -- Consider loading the TAS player *here* once if the live-reload isn't strictly needed
         -- if enabled and not State.TasPlayerFunction then
         --     -- Load and store the function
         -- end
     end)
-    State.PlayEnabled = false -- Set initial state
+    State.AutoPlayEnabled = false -- Set initial state
 
-    sec:NewButton("Download TAS files", "Downloads required TAS files from GitHub.", function()
+    secAuto:NewButton("Download TAS files", "Downloads required TAS files from GitHub.", function()
         local tasFolderPath = CONFIG.FILES_FOLDER .. "/" .. CONFIG.TAS_SUBFOLDER
         if getgenv().isfolder and not isfolder(tasFolderPath) then
             makefolder(tasFolderPath)
@@ -484,7 +484,7 @@ local function initializeUI()
          -- Logic is handled by the __index hook (if available and enabled)
     end)
 
-    secTAS:NewToggle("-Leave", "matically leaves the game if another player joins.", function(enabled)
+    secTAS:NewToggle("Auto-Leave", "Automatically leaves the game if another player joins.", function(enabled)
         State.AutoLeaveEnabled = enabled
         showAlert("Auto-Leave " .. (enabled and "Enabled" or "Disabled"), enabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
         -- Logic handled in Players.PlayerAdded
