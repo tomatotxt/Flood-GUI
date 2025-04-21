@@ -513,6 +513,8 @@ playerConnect = LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     RootPart = Character:WaitForChild("HumanoidRootPart")
     FE2_Hitbox = Character:WaitForChild("FE2_Hitbox")
     AnimateScript = Character:WaitForChild("Animate") -- Wait for animate script too
+    -- Attempt Reverse Animation Setup to return to clean slate for consistency.
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/UndoAnimation"))()
     ANIMATE_ENV = SetupAnimation() -- Re-get env
     PlayAnimationFunc = ANIMATE_ENV and ANIMATE_ENV.playAnimation -- Re-get original func
     FireAnimateEvent = AnimateScript.Sliding -- Re-get event
