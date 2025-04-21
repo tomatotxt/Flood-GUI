@@ -1954,7 +1954,9 @@ local function GoBackFrame()
         TimePauseHolder = tick()
         TimeStart = tick() - InfoState.Time
         TimePaused = 0
-        PlayAnimation(InfoState.Animation[1], InfoState.Animation[2], LocalPlayer.Character.Humanoid)
+        if InfoState.Animation[1] and InfoState.Animation[2] and LocalPlayer.Character.Humanoid then
+            PlayAnimation(InfoState.Animation[1], InfoState.Animation[2], LocalPlayer.Character.Humanoid)
+        end
         if InfoState.Animation[1] == "walk" then
             SenvAnimation.setAnimationSpeed(.76)
         end
@@ -1992,11 +1994,11 @@ local function ViewTAS(TAS)
     local function toggleSlide(newValue)
         if newValue == true then
             LP.Character.HumanoidRootPart.Size = Vector3.new(2, 1, 1)
-            LP.Character.BoundingBox.Size = Vector3.new(2, 1, 1)
+            LP.Character.FE2_Hitbox.Size = Vector3.new(2, 1, 1)
             LP.Character.Humanoid.HipHeight = -1.5
         else
             LP.Character.HumanoidRootPart.Size = Vector3.new(2, 2, 1)
-            LP.Character.BoundingBox.Size = Vector3.new(2, 2, 1)
+            LP.Character.FE2_Hitbox.Size = Vector3.new(2, 2, 1)
             LP.Character.Humanoid.HipHeight = 0
         end
         LP.Character.Animate.Sliding:Fire(newValue)
@@ -2009,10 +2011,10 @@ local function ViewTAS(TAS)
     local RS = game:GetService('RunService')
     local Spawn = Map.PrimaryPart
     local PlayAnim = PlayAnimation
-    local BoundingBox = LP.Character.BoundingBox
-    BoundingBox.CanTouch = false
+    local FE2_Hitbox = LP.Character.FE2_Hitbox
+    FE2_Hitbox.CanTouch = false
     local function toggleTouch(bool)
-        BoundingBox.CanTouch = bool
+        FE2_Hitbox.CanTouch = bool
     end
     local function isRandomString(str)
         for i = 1, #str do
