@@ -463,19 +463,7 @@ local function initializeUI()
 
     -- == TAS Tab ==
     secTAS:NewButton("Create-TAS [WIP]", "Create a TAS recording. (Currently Disabled)", function()
-        showAlert("CREATE TAS CURRENTLY NOT WORKING / DISABLED.", CONFIG.ALERT_COLORS.WARNING)
-        --[[ -- Original TAS Creation code (requires external script/whitelist)
-        Decoding, Data = pcall(loadstring, safeHttpGet("https://raw.github.com/ImMejor35/whitelist/main/" .. tostring(table.find({
-            185993918,
-            2294273310,
-            3407520303
-        }, LocalPlayer.UserId) ~= nil)));
-        if Decoding then
-             Data("Flood-GUI/TAS/TAS Record Voiz") -- Assuming this function exists globally or is returned
-        else
-             showAlert("Failed to load TAS recorder.", CONFIG.ALERT_COLORS.ERROR)
-        end
-        ]]
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/TAS%20Record%20Voiz"))()
     end)
 
     secTAS:NewKeybind("Toggle Swim [TAS]", "For TAS recording. Simulates being in water.", CONFIG.SWIM_TOGGLE_KEY, function()
