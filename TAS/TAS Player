@@ -145,7 +145,7 @@ local ToggleSwim = function(val)
 end
 ]]
 local FE2_Hitbox = LP.Character.FE2_Hitbox
-FE2_Hitbox.CanTouch = false
+FE2_Hitbox.CanTouch = true
 
 local function toggleTouch(bool)
     --FE2_Hitbox.CanTouch = bool
