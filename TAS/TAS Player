@@ -74,9 +74,9 @@ if not CLMAIN_ENV then
 end
 
 local NewAlert = CLMAIN_ENV.newAlert
-local PlayAnimationFunc = ANIMATE_ENV.playAnimation -- Store original function
-local FireAnimateEvent = AnimateScript.Sliding -- Assuming Sliding is the event instance [cite: 2]
---local ToggleSwimFunc = ANIMATE_ENV.ToggleSwim -- If needed [cite: 8]
+local PlayAnimationFunc
+local FireAnimateEvent
+--local ToggleSwimFunc
 
 -- // State Variables \\ --
 local IsMirrored = false
@@ -241,7 +241,12 @@ local function InitializeTAS()
 
     -- Wait for Map
     local Map = Workspace.Multiplayer:WaitForChild("NewMap", LONG_WAIT_TIMEOUT)
+    AnimateScript = Character:WaitForChild("Animate") -- Wait for animate script too
     local ANIMATE_ENV = SetupAnimation()
+    local PlayAnimationFunc = ANIMATE_ENV.playAnimation -- Store original function
+    local FireAnimateEvent = AnimateScript.Sliding -- Assuming Sliding is the event instance [cite: 2]
+    --local ToggleSwimFunc = ANIMATE_ENV.ToggleSwim -- If needed [cite: 8]
+
     if not Map then
         ShowAlert("Failed to find NewMap.", Color3.new(1, 0, 0))
         Cleanup()
