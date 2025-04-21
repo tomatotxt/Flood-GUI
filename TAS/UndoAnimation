@@ -1,0 +1,60 @@
+--[[
+	Reversal Script for Custom FE2 Animate
+
+	This script attempts to undo the main actions of the custom animation script:
+	1. Stop all currently playing custom animations on the Humanoid.
+	2. Reset the global flags/tables used by the custom script (getgenv().AnimationLoaded, getgenv().Animation).
+	3. Re-enable the default 'Animate' script inside the Character.
+]]
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character
+local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+local AnimateScript = Character and Character:FindFirstChild("Animate")
+
+-- Function to safely stop all animation tracks on the Humanoid
+local function stopAllHumanoidAnimations(humanoid)
+	if not humanoid then return end
+	local playingTracks = humanoid:GetPlayingAnimationTracks()
+	print("Reversal: Stopping", #playingTracks, "animation tracks.")
+	for _, track in ipairs(playingTracks) do
+		track:Stop(0) -- Stop immediately with 0 fade time
+		-- We don't destroy tracks here, just stop them. The default script will manage its own.
+	end
+end
+
+-- Main reversal logic
+if not (Character and Humanoid and AnimateScript) then
+	warn("Reversal Script: Cannot run. Player character, Humanoid, or default Animate script not found.")
+	return
+end
+
+if getgenv().AnimationLoaded == true or AnimateScript.Disabled == true then
+	print("Reversal Script: Detected active custom animation script. Attempting reversal...")
+
+	-- 1. Stop custom animations
+	stopAllHumanoidAnimations(Humanoid)
+	print("Reversal Script: Stopped active animations.")
+
+	-- 2. Clean up global environment variables
+	getgenv().AnimationLoaded = false
+	getgenv().Animation = nil -- Remove the table
+	print("Reversal Script: Cleared getgenv flags.")
+
+	-- 3. Re-enable the default Animate script
+	AnimateScript.Disabled = false
+	print("Reversal Script: Re-enabled default Animate script.")
+
+	-- Note: This script cannot easily disconnect the event listeners (like RunService.Stepped, Humanoid.StateChanged etc.)
+	-- that the original script connected, as it doesn't have references to the connection objects.
+	-- However, by stopping the animations and re-enabling the default script, the *effects* of the
+	-- custom script should cease, and the default animations should take over.
+	-- The original script's connections might still exist but should become largely irrelevant
+	-- or potentially error if they try to access things that are no longer valid.
+
+	print("Reversal Script: Completed. Default Roblox animations should now be restored.")
+
+else
+	print("Reversal Script: Custom animation script does not appear to be active (AnimationLoaded is false and Animate script is enabled). No action taken.")
+end
