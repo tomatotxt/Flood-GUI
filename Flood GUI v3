@@ -2,7 +2,7 @@
     Flood GUI v3 - Refactored
     Description: Exploit GUI for Flood Escape 2 providing various cheats and utilities.
 ]]
-getgenv().debugmode = true
+getgenv().debugmode = false
 -- // Services //
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -146,7 +146,7 @@ end
 -- // Initialization Functions //
 local function loadFE2Library()
     local success, library = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("SharedModules"):WaitForChild("FE2Library"))
+        return require(ReplicatedStorage:FindFirstChild("SharedModules"):FindFirstChild("FE2Library"))
     end)
     if success then
         State.FE2Library = library
@@ -208,9 +208,9 @@ local function checkBuildVersion()
     if configInstance then
         State.CurrentBuild = tonumber(configInstance:GetAttribute("BuildVersion"))
         if State.CurrentBuild and CONFIG.LATEST_BUILD < State.CurrentBuild then
-            local diff = math.round(math.abs(CONFIG.LATEST_BUILD - State.CurrentBuild))
-            showAlert(("%s is %d version(s) behind!"):format(CONFIG.SCRIPT_VERSION_NAME, diff), CONFIG.ALERT_COLORS.WARNING)
+            local diff = State.CurrentBuild - CONFIG.LATEST_BUILD
             showAlert("Report all issues on the discord server!", CONFIG.ALERT_COLORS.BEHIND)
+            showAlert(("%s is %f version(s) behind!"):format(CONFIG.SCRIPT_VERSION_NAME, diff), CONFIG.ALERT_COLORS.WARNING)
         else
              showAlert(("%s loaded successfully!"):format(CONFIG.SCRIPT_VERSION_NAME), CONFIG.ALERT_COLORS.SUCCESS)
         end
