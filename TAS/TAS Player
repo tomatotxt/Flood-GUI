@@ -514,6 +514,7 @@ end
 local playerConnect
 playerConnect = LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     warn("TAS Player: Player respawned. Stopping playback and cleaning up.")
+    playerConnect:Disconnect() -- early disconnect should fix connection stacking issue.
     -- Update character variables (important!)
     Character = newCharacter
     Humanoid = Character:WaitForChild("Humanoid")
@@ -527,7 +528,6 @@ playerConnect = LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     FireAnimateEvent = AnimateScript.Sliding -- Re-get event
 
     Cleanup() -- Disconnect old loops/events for the previous character
-    playerConnect:Disconnect()
     -- Optional: Automatically restart TAS on respawn?
     -- task.wait(2) -- Short delay after respawn
     -- if InitializeTAS() then
