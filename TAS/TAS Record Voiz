@@ -1883,7 +1883,7 @@ local function RemoveSavestate()
     if #Savestates > 1 then
         Alert("Removed Savestate",Color3.fromRGB(0, 255, 0),1)
         table.remove(Savestates)
-        BackSavestate()
+        task.spawn(BackSavestate)
     else
         Alert("No Savestate",Color3.fromRGB(255, 0, 0),1)
     end
@@ -2204,21 +2204,21 @@ KeybindsConnect = UserInputService.InputBegan:Connect(function(Key, Typing)
         if Key == Keybinds.UserPause then
             UserPause()
         elseif Key == Keybinds.AddSavestate then
-            AddSavestate()
+            task.spawn(AddSavestate)
         elseif Key == Keybinds.RemoveSavestate then
-            RemoveSavestate()
+            task.spawn(RemoveSavestate)
         elseif Key == Keybinds.BackSavestate then
-            BackSavestate()
+            task.spawn(BackSavestate)
         elseif Key == Keybinds.CollisionToggler then
             CollisionToggler()
         elseif Key == Keybinds.SaveRun then
             SaveRun()
         elseif Key == Keybinds.GoFrameForward then
-            FrameForwardStart()
+            task.spawn(FrameForwardStart)
         elseif Key == Keybinds.GoFrameBack then
-            FrameBackStart()
+            task.spawn(FrameBackStart)
         elseif Key == Keybinds.ResetToNormal then
-            ResetToNormal()
+            task.spawn(ResetToNormal)
         elseif Key == Keybinds.ViewTAS then
             if not ViewingTAS then
                 AddSavestate()
