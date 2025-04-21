@@ -1710,15 +1710,29 @@ local function hookAnimation()
     print("Updated animation hook values"..RunID)
 end
 
+local oldindex
+oldindex = hookmetamethod(game, "__index", function(self, key)
+    if key == "Archivable" then
+        return false
+    end
+    return oldindex(self, key)
+end)
+print("Hook Set")
+
 local Map
 local function SetUpMap()
     local CurrentInfo
-    function game.ReplicatedStorage.Remote.ReqCharVars.OnClientInvoke() return {} end
-    function game.ReplicatedStorage.Remote.FetchPos.OnClientInvoke() return CFrame.new() end
+    --function game.ReplicatedStorage.Remote.ReqCharVars.OnClientInvoke() return {} end
+    --function game.ReplicatedStorage.Remote.FetchPos.OnClientInvoke() return CFrame.new() end
     SetPrimaryPart()
     MapName = game.Workspace.Multiplayer.Map.Settings:GetAttribute("MapName")
     print(MapName..RunID)
-    Map = game.Workspace.Multiplayer.Map:Clone()
+    local RealMap = game.Workspace.Multiplayer.Map
+    for i,v in pairs(RealMap:GetDescendants()) do
+        v.Archivable = true
+    end
+    print("Map processed")
+    Map = RealMap:Clone()
     Map.Parent = game.Workspace
     --Map:MoveTo(Vector3.new(0,1000,0))
     SpawnPos = Map.PrimaryPart.Position 
@@ -1728,7 +1742,7 @@ local function SetUpMap()
     LocalPlayer.CharacterAdded:Wait()
     LocalPlayer.Character:WaitForChild("Humanoid")
     LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-    ReplicatedStorage.Remote.RemoveWaiting:FireServer(Key)
+    --ReplicatedStorage.Remote.RemoveWaiting:FireServer(Key)
     LocalPlayer.Character.Humanoid.WalkSpeed = 0
     LocalPlayer.Character.Humanoid.JumpPower = 0
     task.wait(0.5)
@@ -1944,7 +1958,7 @@ local function GoBackFrame()
         if InfoState.Animation[1] == "walk" then
             SenvAnimation.setAnimationSpeed(.76)
         end
-        SetTimeGui()
+        task.spawn(SetTimeGui)
         PlayerInfo[#PlayerInfo] = nil
     end
 end
@@ -2141,7 +2155,8 @@ local function SaveRun()
     Alert("Saved", Color3.fromRGB(0, 255, 0), 1)
 end
 
-ReplicatedStorage.Remote.StartClientMapTimer.OnClientEvent:Wait()
+--ReplicatedStorage.Remote.StartClientMapTimer.OnClientEvent:Wait()
+repeat wait() until game.Players.LocalPlayer.Character.HumanoidRootPart.Anchored == false
 task.wait(1)
 SetUpMap()
 
@@ -2176,8 +2191,8 @@ RecordLoop = RunService.Heartbeat:Connect(function(deltaTime)
     else
         timer = tick()
     end
-    UpdSavestatesGUI()
-    UpdFramesGUI()
+    task.spawn(UpdSavestatesGUI)
+    task.spawn(UpdFramesGUI)
 end)
 
 SaveRun()
