@@ -148,7 +148,7 @@ local FE2_Hitbox = LP.Character.FE2_Hitbox
 FE2_Hitbox.CanTouch = false
 
 local function toggleTouch(bool)
-    FE2_Hitbox.CanTouch = bool
+    --FE2_Hitbox.CanTouch = bool
 end
 
 function isRandomString(str) -- basicly detects if button 99% of the time just checks if all capital
@@ -221,6 +221,7 @@ Death = LP.Character.Humanoid.Changed:Connect(function(Change)
 end)
 
 local RootPart = LP.Character.HumanoidRootPart
+local Humanoid = LP.Character.Humanoid
 if Legit then
     RootPart.RootJoint.Enabled = false
 end
@@ -261,9 +262,11 @@ Loop = RS.Heartbeat:Connect(function(DeltaTime)
                 
             else
                 RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], CCFrame[3]) * AngC(CCFrame[4], CCFrame[5], CCFrame[6]) + Offset
-                CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
+                --CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
             end
             activateAnimation(CurrentInfo.AAnimation)
+            -- Walljump Sticking to player ? fix
+            Humanoid.Jump = true
         end
     end
 end)
