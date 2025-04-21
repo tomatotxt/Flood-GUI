@@ -1,540 +1,270 @@
---[[
-    TAS Player v2.1 (Refactored)
-    Authors: Tomato & Moz (Original), Gemini (Refactoring)
-    Description: Plays back Tool-Assisted Speedrun recordings for a specific Roblox game.
-    Handles map fetching, mirroring, and game-specific mechanics.
-]]
-
--- // Services \\ --
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-
--- // Constants \\ --
-local TAS_REPO_URL = "https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/"
-local PLAYER_SLIDE_SIZE = Vector3.new(2, 1, 1)
-local PLAYER_NORMAL_SIZE = Vector3.new(2, 2, 1)
-local PLAYER_SLIDE_HIPHEIGHT = -1.5
-local PLAYER_NORMAL_HIPHEIGHT = 0
-local SLIDE_DURATION = 0.10 -- Seconds
-local WALK_ANIM_SPEED = 0.76
-local BUTTON_INTERACT_SIZE = Vector3.new(6, 6, 6)
-local LONG_WAIT_TIMEOUT = 80 -- Reduced from 9e6 for sanity, adjust if needed
-local FRAME_PROCESS_BATCH_SIZE = 60 -- How many frames to check ahead in the loop
-local MIRROR_ROTATION_Y = math.pi -- For CFrame mirroring
-
--- Tables that might need external configuration in a real application
-local SKIP_MIRRORED_MAPS = {
+print("Diffrent player v2")
+if Legit == nil then
+    Legit = false
+end
+local SkipMirroredMaps = {
     ["Retro Coast"] = true,
     ["Zemblanity"] = true,
-    ["Northren Mill"] = true, -- Note: Potential typo "Northren" vs "Northern" [cite: 1]
+    ["Northren Mill"] = true,
     ["Mysterium"] = true,
     ["Decaying Silo"] = true,
     ["Active Volcanic Mines"] = true,
-    ["Snowy Stronghold"] = true,
+    ["Snowy Stronghold"] = true
 }
--- Example of reading from getgenv safely
-local extraSkipMaps = getgenv().TAS_EXTRA_SKIP_MIRRORED_MAPS
-if type(extraSkipMaps) == "table" then
-    for _, mapName in ipairs(extraSkipMaps) do
-        if type(mapName) == "string" then
-            SKIP_MIRRORED_MAPS[mapName] = true
-        end
+if getgenv().whatthefuckisthisyoumayaskitisaverylongvariblename then
+    for _,v in ipairs(getgenv().whatthefuckisthisyoumayaskitisaverylongvariblename) do
+        SkipMirroredMaps[v] = true
     end
 end
-
--- // Local Player & Character Variables (Initialize Late) \\ --
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or (LocalPlayer.CharacterAdded:Wait() and LocalPlayer.Character)
-local Humanoid = Character:WaitForChild("Humanoid")
-local RootPart = Character:WaitForChild("HumanoidRootPart")
-local FE2_Hitbox = Character:WaitForChild("FE2_Hitbox")
-local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
-local CL_MAIN_GameScript = PlayerScripts:WaitForChild("CL_MAIN_GameScript") -- Potential wait needed
-local AnimateScript = Character:WaitForChild("Animate") -- Potential wait needed
-
--- // Environment & Modules \\ --
-local CLMAIN_ENV = getsenv(CL_MAIN_GameScript)
-
-local function SetupAnimation()
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/Animation"))()
-	return getgenv().Animation
-end
-
-if not CLMAIN_ENV then
-    warn("TAS Player: Failed to get script environments. Aborting.")
-    CLMAIN_ENV = {
-        newAlert = function(...)
-            print(...)
-        end
-    }
-    return -- Stop execution if environments aren't found
-end
-
-local NewAlert = CLMAIN_ENV.newAlert
-local PlayAnimationFunc
-local FireAnimateEvent
---local ToggleSwimFunc
-
--- // State Variables \\ --
-local IsMirrored = false
-local LegitMode = getgenv().TAS_LEGIT_MODE == true -- Example: Control via global variable
-local SpawnPart = nil
-local TAS_Data = nil
-local StartTime = 0
-local CurrentFrameIndex = 1 -- Start at frame 1 (Lua tables are 1-indexed)
-local Connections = {} -- Store event connections to disconnect later
-
--- // Utility Functions \\ --
-local function CFrameFromTable(tbl)
-    -- Creates CFrame from {X, Y, Z, Rx, Ry, Rz} table
-    return CFrame.new(tbl[1], tbl[2], tbl[3]) * CFrame.fromEulerAnglesXYZ(tbl[4], tbl[5], tbl[6])
-end
-
-local function CFrameMirror(cf)
-    -- Mirrors CFrame across the Z axis for map mirroring
-    local x, y, z, rX, rY, rZ = cf:GetComponents()
-    -- Negate Z position, Negate Y rotation, add PI to X and Z rotations
-    -- Note: Original code used -pi for X and Z, and kept Y. Let's stick to the original logic first:
-    -- return CFrame.new(x, y, -z) * CFrame.fromEulerAnglesXYZ(-rX, rY, -rZ) -- This might be more intuitive Z mirror
-    -- Original logic: CFrame.new(CCFrame[1], CCFrame[2], -CCFrame[3]) * AngC(-math.pi, CCFrame[5], -math.pi) [cite: 17]
-    return CFrame.new(x, y, -z) * CFrame.fromEulerAnglesXYZ(-rX, rY, -rZ)
-end
-
-local function ShowAlert(message, color)
-    if NewAlert then
-        NewAlert(message, color or Color3.fromRGB(255, 149, 5))
+local Mirrored = false
+local NewV = Vector3.new
+local NewC = CFrame.new
+local AngC = CFrame.fromEulerAnglesXYZ
+local LP = game.Players.LocalPlayer
+local CurrentCamera = workspace.CurrentCamera
+local function toggleSlide(newValue)
+    if newValue == true then
+        LP.Character.HumanoidRootPart.Size = Vector3.new(2, 1, 1)
+        LP.Character.FE2_Hitbox.Size = Vector3.new(2, 1, 1)
+        LP.Character.Humanoid.HipHeight = -1.5
     else
-        warn("TAS Alert:", message) -- Fallback if alert function is missing
+        LP.Character.HumanoidRootPart.Size = Vector3.new(2, 2, 1)
+        LP.Character.FE2_Hitbox.Size = Vector3.new(2, 2, 1)
+        LP.Character.Humanoid.HipHeight = 0
     end
+    LP.Character.Animate.Sliding:Fire(newValue)
 end
 
-local function Cleanup()
-    ShowAlert("Cleaning up TAS Player...")
-    for _, conn in ipairs(Connections) do
-        if conn and conn.Connected then
-            conn:Disconnect()
-        end
-    end
-    Connections = {} -- Clear the table
-
-	if ANIMATE_ENV and ANIMATE_ENV.playAnimation then
-		-- Restore original functions/state
-		ANIMATE_ENV.playAnimation = PlayAnimationFunc
-		if Humanoid and Humanoid.Health > 0 then
-			ANIMATE_ENV.playAnimation("idle", 0.1, Humanoid) -- Use stored function [cite: 14, 15]
-		end
-	end
-
-    -- Restore player physics/state
-    if FE2_Hitbox then FE2_Hitbox.CanTouch = true end -- Ensure touch is re-enabled [cite: 11, 14]
-    if LegitMode and RootPart and RootPart:FindFirstChild("RootJoint") then
-        RootPart.RootJoint.Enabled = true -- [cite: 15, 16]
-    end
-    -- Restore slide state if necessary
-    if Humanoid and Humanoid.HipHeight == PLAYER_SLIDE_HIPHEIGHT then
-        RootPart.Size = PLAYER_NORMAL_SIZE
-        FE2_Hitbox.Size = PLAYER_NORMAL_SIZE
-        Humanoid.HipHeight = PLAYER_NORMAL_HIPHEIGHT
-        if FireAnimateEvent then FireAnimateEvent:Fire(false) end -- [cite: 2]
-    end
-
-    getgenv().tasPlayerRunning = false -- Indicate cleanup finished
+local function doSlide(delay)
+    toggleSlide(true)
+    task.wait(delay)
+    toggleSlide(false)
 end
+local Alert = getsenv(LP.PlayerScripts.CL_MAIN_GameScript).newAlert
+local Multi = workspace.Multiplayer
+local RS = game:GetService('RunService')
 
-local function Die()
-    ShowAlert("Player Died during TAS.", Color3.new(1, 0, 0))
-    Cleanup()
-    -- Note: Original script didn't explicitly stop Heartbeat here, relies on death handling
-    -- Humanoid.Health = 0 -- Don't force death again, just cleanup
+-- IMPORTANT
+local CLMAIN = getsenv(LP.PlayerScripts.CL_MAIN_GameScript)
+local oldalert
+oldalert = hookfunction(CLMAIN.newAlert, function(...)
+    return oldalert(...)
+end)
+if not getrenv().alreadystarted then
+    CLMAIN.newAlert("TAS Player Started.", Color3.fromRGB(255, 149, 5))
+    getrenv().alreadystarted = true
+else
+    CLMAIN.newAlert("TAS Player ready for next map.", Color3.new(0,1,.5))
 end
+local HTTPService = game:GetService("HttpService")
+local Animate = getsenv(LP.Character.Animate)
+local Map = Multi:WaitForChild('NewMap', 9e6)
+local mapNamePrime = Map:WaitForChild('Settings'):GetAttribute("MapName")
+local mapName = HTTPService:UrlEncode(mapNamePrime)
+print(mapName)
+local path
+local real, reason = pcall(function()
+    path = readfile("Flood-GUI/TAS FILES/" .. mapNamePrime .. ".json")
+end)
+if real and #path > 50 then
+    print("TAS FILE IS REAL")
+else
+    print("TAS FILE BROKEN")
+    warn(reason)
+    return
+end
+local TAS = HTTPService:JSONDecode(path)
+print(#path)
+if not TAS then
+    CLMAIN.newAlert("TAS file for "..mapName.." is not in workspace folder!", Color3.new(1,0,0))
+    LP.Character.Humanoid.Health = 0
+    LP.CharacterAdded:wait()
+else
+CLMAIN.newAlert("TAS Loaded!")
+repeat task.wait() until Map.Name == "Map"
 
--- // Game Interaction Functions \\ --
-local function SetSlideState(isSliding)
-    if not Humanoid or not RootPart or not FE2_Hitbox or not FireAnimateEvent then return end
+local HighlightPath = game:GetService("Workspace").Multiplayer.Map.Settings:GetAttribute("Highlight")
 
-    if isSliding then
-        RootPart.Size = PLAYER_SLIDE_SIZE
-        --FE2_Hitbox.Size = PLAYER_NORMAL_SIZE -- Keep FE2_Hitbox normal or match RootPart? Original used PLAYER_SLIDE_SIZE [cite: 2]
-        FE2_Hitbox.Size = PLAYER_SLIDE_SIZE -- Sticking to original logic [cite: 2]
-        Humanoid.HipHeight = PLAYER_SLIDE_HIPHEIGHT
+if HighlightPath then
+    CLMAIN.newAlert("Map cannot be mirrored.", Color3.fromRGB(255, 100, 0))
+    Mirrored = false
+else
+    if SkipMirroredMaps[mapName] then
+        CLMAIN.newAlert('Map cannot be mirrored.', Color3.fromRGB(255, 100, 0))
     else
-        RootPart.Size = PLAYER_NORMAL_SIZE
-        FE2_Hitbox.Size = PLAYER_NORMAL_SIZE
-        Humanoid.HipHeight = PLAYER_NORMAL_HIPHEIGHT
-    end
-    FireAnimateEvent:Fire(isSliding)
-end
-
-local function DoSlide()
-    SetSlideState(true)
-    task.delay(SLIDE_DURATION, function()
-        -- Check if character still exists before resetting slide state
-        if Character and Humanoid and Humanoid.Health > 0 then
-            SetSlideState(false)
+        if Map:WaitForChild('Settings'):FindFirstChild("_MirrorMap") then
+            CLMAIN.newAlert('Map is not mirrored.', Color3.fromRGB(255, 149, 5))
+            Mirrored = false
+        else
+            CLMAIN.newAlert('Map is mirrored, TAS will be played mirrored!', Color3.fromRGB(255, 149, 5))
+            Mirrored = true
         end
-    end)
-end
-
-local function ActivateAnimation(animInfo)
-    if not animInfo or not animInfo[1] or not animInfo[2] then return end
-    if not Humanoid or Humanoid.Health <= 0 then return end
-
-    local animName = animInfo[1]
-    local fadeTime = animInfo[2]
-
-	if PlayAnimationFunc then
-   		PlayAnimationFunc(animName, fadeTime, Humanoid) -- Call original func
-	end
-
-    if animName == "walk" then
-	for i,v in pairs(ANIMATE_ENV) do
-		print(i,v)
-	end
-	if ANIMATE_ENV.setAnimationSpeed then
-        	ANIMATE_ENV.setAnimationSpeed(WALK_ANIM_SPEED) -- Assumes setAnimationSpeed exists in env [cite: 11, 12]
-	else
-		print("no setAnimationSpeed")
-	end
-    elseif animName == "slide" then
-        task.spawn(DoSlide) -- Use task.spawn for safety [cite: 12]
     end
 end
 
-local function SetCharacterTouchable(canTouch)
-    if FE2_Hitbox then
-        FE2_Hitbox.CanTouch = canTouch
+local Spawn = (function() -- new spawn finder by "tomato.txt" on discord
+    local Spawn = nil
+
+    local connections = {}
+    for _,v in ipairs(Map:GetChildren()) do
+        if v.Name == "Part" then
+            table.insert(connections, v:GetPropertyChangedSignal("Rotation"):Connect(function()
+                for _,v in ipairs(connections) do
+                    v:Disconnect()
+                end
+                Spawn = v
+            end))
+        end
+    end
+    repeat task.wait() until Spawn
+    CLMAIN.newAlert("Spawn found!", Color3.fromRGB(0, 255, 0))
+    return Spawn
+end)()
+
+--game:GetService("ReplicatedStorage").Remote.StartClientMapTimer.OnClientEvent:Wait()
+repeat task.wait() until game.Players.LocalPlayer.Character
+Character = game.Players.LocalPlayer.Character
+repeat task.wait() until Character:WaitForChild("HumanoidRootPart").Anchored == false
+local TimeStart = tick()
+CLMAIN.newAlert('TAS Running..', Color3.fromRGB(255, 149, 5))
+PlayAnim = Animate.playAnimation
+Animate.playAnimation = function()end
+
+for _, v in next, Map:GetDescendants() do
+    if v.Name == 'ButtonIcon' then
+        local buttonPart = v.Parent.Parent:FindFirstChildOfClass('Part')
+        if buttonPart ~= nil then
+            buttonPart.Size = Vector3.new(6,6,6)
+        end
     end
 end
 
--- Basic check: is the part something we generally DON'T want to trigger TouchEnded for?
--- This needs careful tuning based on game mechanics.
-local function ShouldIgnoreTouch(part)
-    if not part or not part.Parent then return true end -- Ignore nil or parentless parts
+--[[
+local ToggleSwim = function(val)
+    LP.Character.Animate.ToggleSwim:Fire(val)
+end
+]]
+local FE2_Hitbox = LP.Character.FE2_Hitbox
+FE2_Hitbox.CanTouch = false
 
-    -- Original logic checks: Not _Wall child, Not specific button pattern, Not AirTank [cite: 9, 10]
-    local hasWallTag = part:FindFirstChild("_Wall")
-    local isAirTank = part.Parent.Name == "AirTank"
-    -- local isExplodingButtonHitbox = (part.Name == "Part" and isRandomString(part.Parent.Name)) -- Original isRandomString was basic [cite: 9]
+local function toggleTouch(bool)
+    FE2_Hitbox.CanTouch = bool
+end
 
-    -- Simplified/Refined logic (example):
-    if hasWallTag then return false end -- Don't ignore walls for TouchEnded logic
-    if isAirTank then return false end -- Don't ignore airtanks
-    if part.Name == "RopeStart" then return false end -- Don't ignore ropes [cite: 10, 11]
-
-    -- Default to ignoring other things (like normal ground, buttons handled elsewhere perhaps?)
+function isRandomString(str) -- basicly detects if button 99% of the time just checks if all capital
+    for i = 1, #str do
+        local ltr = str:sub(i, i)
+        if ltr:lower() == ltr then
+            return false
+        end     
+    end
     return true
 end
 
--- // Initialization & Main Logic \\ --
-local function InitializeTAS()
-    -- Check if another instance is running
-    if getgenv().tasPlayerRunning then
-        ShowAlert("TAS Player is already running or did not clean up properly.", Color3.new(1, 0.5, 0))
-        return false
-    end
-    getgenv().tasPlayerRunning = true
 
-    ShowAlert("TAS Player Initializing...", Color3.fromRGB(255, 149, 5))
-
-    -- Wait for Map
-    local Map = Workspace.Multiplayer:WaitForChild("NewMap", LONG_WAIT_TIMEOUT)
-    AnimateScript = Character:WaitForChild("Animate") -- Wait for animate script too
-    local ANIMATE_ENV = SetupAnimation()
-    local PlayAnimationFunc = ANIMATE_ENV.playAnimation -- Store original function
-    local FireAnimateEvent = AnimateScript.Sliding -- Assuming Sliding is the event instance [cite: 2]
-    --local ToggleSwimFunc = ANIMATE_ENV.ToggleSwim -- If needed [cite: 8]
-
-    if not Map then
-        ShowAlert("Failed to find NewMap.", Color3.new(1, 0, 0))
-        Cleanup()
-        return false
-    end
-
-    local Settings = Map:WaitForChild("Settings", 5)
-    if not Settings then
-        ShowAlert("Failed to find Map Settings.", Color3.new(1, 0, 0))
-        Cleanup()
-        return false
-    end
-
-    local mapName = Settings:GetAttribute("MapName")
-    if not mapName then
-        ShowAlert("Failed to get MapName attribute.", Color3.new(1, 0, 0))
-        Cleanup()
-        return false
-    end
-
-    local encodedMapName = HttpService:UrlEncode(mapName)
-    local url = TAS_REPO_URL .. encodedMapName .. ".json"
-    ShowAlert("Fetching TAS for: " .. mapName)
-    print("TAS URL:", url)
-
-    -- Fetch and Decode TAS Data
-    local success, result = pcall(function()
-        local rawData = game:HttpGet(url, true) -- Use HttpService:RequestAsync for more control if needed
-        return HttpService:JSONDecode(rawData)
-    end)
-
-    if not success or not result or type(result) ~= "table" or #result == 0 then
-        ShowAlert("Failed to fetch or decode TAS file for '" .. mapName .. "'. Error: " .. tostring(result), Color3.new(1, 0, 0))
-        -- Optional: Force respawn like original? [cite: 4]
-        -- if Humanoid then Humanoid.Health = 0 end
-        Cleanup()
-        return false
-    end
-
-    TAS_Data = result
-    ShowAlert("TAS Loaded Successfully (" .. #TAS_Data .. " frames)")
-
-    -- Wait for Map to be fully loaded (original check)
-    repeat task.wait() until Map.Name == "Map" -- This check seems odd, NewMap becomes Map? Verify this logic.
-    if Map.Name ~= "Map" then -- Add a timeout?
-         ShowAlert("Map name did not become 'Map'.", Color3.new(1,0,0))
-         Cleanup()
-         return false
-    end
-
-
-    -- Determine Mirroring
-    local highlightPath = Settings:GetAttribute("Highlight") -- [cite: 4]
-    if highlightPath then
-        ShowAlert("Map cannot be mirrored (Highlight Path).", Color3.fromRGB(255, 100, 0))
-        IsMirrored = false
-    elseif SKIP_MIRRORED_MAPS[mapName] then
-        ShowAlert("Map cannot be mirrored (Skipped Map).", Color3.fromRGB(255, 100, 0))
-        IsMirrored = false
-    else
-        -- Check for _MirrorMap object existence [cite: 4, 5]
-        if Settings:FindFirstChild("_MirrorMap") then
-            ShowAlert("Map is NOT mirrored.", Color3.fromRGB(255, 149, 5))
-            IsMirrored = false
-        else
-            ShowAlert("Map IS mirrored, TAS will be played mirrored!", Color3.fromRGB(255, 149, 5))
-            IsMirrored = true
-        end
-    end
-
-    -- Find Spawn Point (Improved Robustness Needed)
-    -- Original logic waits for a part named "Part" to rotate. This is highly unreliable.
-    -- specific naming conventions, or known offsets. Using the original as a placeholder:
-    local spawnSearchTimeout = 10 -- Seconds
-    local spawnStartTime = time()
-    local tempConnections = {}
-    for _, v in ipairs(Map:GetChildren()) do
-        if v:IsA("BasePart") and v.Name == "Part" then -- Original logic [cite: 6]
-            local conn = v:GetPropertyChangedSignal("Rotation"):Connect(function()
-                 if not SpawnPart then -- Only capture the first one
-                      SpawnPart = v
-                      ShowAlert("Spawn found via Rotation! (Part: " .. v:GetFullName() .. ")", Color3.fromRGB(0, 255, 0))
-                      -- Disconnect all temporary listeners once found
-                      for _, tempConn in ipairs(tempConnections) do tempConn:Disconnect() end
-                      tempConnections = {}
-                 end
-            end)
-            table.insert(tempConnections, conn)
-        end
-    end
-    -- Wait for spawn detection or timeout
-    while not SpawnPart and (time() - spawnStartTime) < spawnSearchTimeout do
-        task.wait(0.1)
-    end
-    -- Cleanup any remaining connections if timeout occurred
-    for _, tempConn in ipairs(tempConnections) do tempConn:Disconnect() end
-
-    -- Fallback / Error if spawn not found
-    if not SpawnPart then
-        ShowAlert("Failed to find spawn point!", Color3.new(1, 0, 0))
-        Cleanup()
-        return false
-    end
-
-    -- Enlarge Button Hitboxes (Original logic) [cite: 7, 8]
-    task.spawn(function() -- Run in parallel to not slow down init
-        for _, descendant in ipairs(Map:GetDescendants()) do
-            if descendant.Name == 'ButtonIcon' and descendant.Parent then
-                local buttonPart = descendant.Parent.Parent:FindFirstChildOfClass('Part')
-                if buttonPart then
-                    buttonPart.Size = BUTTON_INTERACT_SIZE
-                end
+local function badCheck(Thing) --  NOT walljump or NOT AIRTANK or explodingbutton hitbox :check:
+    local Parent = Thing.Parent
+    if not Thing:FindFirstChild("_Wall") then
+        if Parent and not (Thing.Name == "Part" and isRandomString(Parent.Name)) then
+            if Parent.Name == "AirTank" then
+                return true
             end
+            return true
         end
-    end)
-
-    -- Disable original animation playback
-    ANIMATE_ENV.playAnimation = function() end -- [cite: 8]
-
-    -- Prepare physics state
-    SetCharacterTouchable(true) -- Start with touch disabled [cite: 8]
-    if LegitMode and RootPart:FindFirstChild("RootJoint") then
-        RootPart.RootJoint.Enabled = false -- [cite: 13]
+        return true
     end
-
-    -- Connect Signals
-    table.insert(Connections, Humanoid.Changed:Connect(function(property)
-        if property == "Health" and Humanoid.Health <= 0 then
-            Die()
-        end
-    end)) -- [cite: 12, 13]
-
-    -- Touch Handling Logic (Connect after setting initial state)
-    table.insert(Connections, RootPart.Touched:Connect(function(hit)
-        if not ShouldIgnoreTouch(hit) then
-             print("TAS Touch Allowed:", hit:GetFullName()) -- Debug
-             SetCharacterTouchable(true) -- Enable touch for specific things [cite: 10]
-        else
-            -- print("TAS Touch Ignored:", hit:GetFullName()) -- Debug spammy
-        end
-    end))
-
-    table.insert(Connections, RootPart.TouchEnded:Connect(function(hit)
-         if not ShouldIgnoreTouch(hit) then
-             print("TAS TouchEnded Reset:", hit:GetFullName()) -- Debug
-             --SetCharacterTouchable(false) -- Disable touch again after interaction ends [cite: 11]
-         end
-    end))
-
-    -- Wait for start signal
-    repeat task.wait() until Character:WaitForChild("HumanoidRootPart").Anchored == false
-    ShowAlert("Detected Start",Color3.fromRGB(255, 149, 5))
-    StartTime = time() -- Use time() instead of tick()
-    ShowAlert('TAS Running...', Color3.fromRGB(255, 149, 5))
-
-    return true -- Initialization successful
+    return false
 end
-
--- // Playback Loop \\ --
-local function RunPlaybackLoop(deltaTime)
-    if not TAS_Data or not SpawnPart or not RootPart or not Humanoid or Humanoid.Health <= 0 then
-        Cleanup() -- Stop if essential components are missing
-        return
+local walljumpfix
+walljumpfix = LP.Character.HumanoidRootPart.Touched:Connect(function(Thing)
+    if badCheck(Thing) then
+        toggleTouch(true)
+    elseif Thing.Name == "RopeStart" then
+        toggleTouch(true)
+    else
+        print("Didn't Touch:", Thing:GetFullName())
     end
-
-    local currentTime = time() - StartTime
-    local targetFrameIndex = CurrentFrameIndex
-
-    -- Check multiple frames ahead to potentially catch up
-    for i = CurrentFrameIndex, math.min(CurrentFrameIndex + FRAME_PROCESS_BATCH_SIZE, #TAS_Data) do
-        local frameData = TAS_Data[i]
-        if currentTime >= frameData.time then
-            targetFrameIndex = i -- This is the latest frame we should be at or past
-        else
-            break -- Stop checking frames once we find one in the future
-        end
-    end
-
-    -- If we haven't reached the target frame yet, wait
-    if targetFrameIndex < CurrentFrameIndex then
-        -- This condition shouldn't really happen with the logic above, but as a safeguard.
-        return
-    end
-
-    -- Process the target frame
-    local CurrentInfo = TAS_Data[targetFrameIndex]
-    if not CurrentInfo then -- Should not happen if loop logic is correct
-        warn("TAS Error: Invalid frame data at index", targetFrameIndex)
-        Cleanup()
-        return
-    end
-
-    -- Calculate CFrame Offset (only needs to be done once, but keep here for now)
-    -- Assumes spawn faces forward (0,0,-1) and is at Y=0 relative to the TAS recording's origin.
-    -- The original offset was Spawn.Position - Vector3.new(0, 1000, 0) [cite: 12]
-    -- This implies the TAS was recorded relative to a point 1000 studs below the spawn.
-    -- Let's keep the original offset logic.
-    local Offset = SpawnPart.Position - Vector3.new(0, 1000, 0)
-
-    -- Apply CFrame
-    local rootCFrameTable = CurrentInfo.CCFrame
-    local cameraCFrameTable = CurrentInfo.CCameraCFrame
-
-    if rootCFrameTable then
-        local targetRootCF = CFrameFromTable(rootCFrameTable)
-        if IsMirrored then
-            -- Apply mirroring and offset
-            -- Need to confirm if the original AngC(-pi, Y, -pi) logic was correct [cite: 17]
-            local mirroredPos = Vector3.new(targetRootCF.Position.X, targetRootCF.Position.Y, -targetRootCF.Position.Z)
-            local _, mirroredRotY, _ = targetRootCF:ToEulerAnglesXYZ() -- Get original Y rotation
-            -- Combine mirrored position with adjusted rotation
-            RootPart.CFrame = CFrame.new(mirroredPos) * CFrame.fromEulerAnglesXYZ(-math.pi, mirroredRotY, -math.pi) + Offset
-        else
-            -- Apply original CFrame and offset
-            RootPart.CFrame = targetRootCF + Offset -- [cite: 17, 18]
-        end
-    end
-
-    if cameraCFrameTable and Workspace.CurrentCamera then
-        local targetCamCF = CFrameFromTable(cameraCFrameTable)
-         if IsMirrored then
-             -- Apply mirroring to camera (Original was commented out) [cite: 17]
-             -- Simple mirroring: Mirror position, keep rotation relative to player? Or full mirror?
-             -- Let's try a simple position mirror + offset first. Rotation might need complex adjustment.
-             local mirroredCamPos = Vector3.new(targetCamCF.Position.X, targetCamCF.Position.Y, -targetCamCF.Position.Z)
-             -- Keep original rotation relative to world for now? Needs testing.
-             local _, camRotY, _ = targetCamCF:ToEulerAnglesXYZ() -- Original cam Y rotation
-             Workspace.CurrentCamera.CFrame = CFrame.new(mirroredCamPos) * CFrame.fromEulerAnglesXYZ(-math.pi, camRotY, -math.pi) + Offset -- Applying similar rotation logic as player for consistency
-         else
-             Workspace.CurrentCamera.CFrame = targetCamCF + Offset -- [cite: 18]
-         end
-    end
-
-    -- Activate Animation
-    if CurrentInfo.AAnimation then
-        ActivateAnimation(CurrentInfo.AAnimation) -- [cite: 18]
-    end
-
-    -- Update frame index
-    CurrentFrameIndex = targetFrameIndex + 1 -- Move to the next frame for the next Heartbeat
-
-    -- Check for TAS completion
-    if CurrentFrameIndex > #TAS_Data then
-        ShowAlert('TAS Run Finished!', Color3.new(0, 1, 0))
-        ShowAlert('TAS Player By Tomato & Moz', Color3.new(0, 1, 0)) -- [cite: 14]
-        Cleanup() -- Stop the loop by cleaning up connections
-    end
-end
-
--- // Script Entry Point \\ --
-
--- **Remove the `while wait() do` loop**
-
--- Ensure character and essential scripts are loaded
-if not Humanoid or not RootPart or not CL_MAIN_GameScript or not AnimateScript then
-    warn("TAS Player: Character or essential scripts not found on startup.")
-    Cleanup() -- Call cleanup in case some state was partially set
-    return
-end
-
-if InitializeTAS() then
-    -- Connect the main playback loop only if initialization succeeded
-    table.insert(Connections, RunService.Heartbeat:Connect(RunPlaybackLoop))
-else
-    warn("TAS Player initialization failed.")
-    Cleanup() -- Ensure cleanup if initialization fails
-end
-
--- Handle player respawn automatically
-local playerConnect
-playerConnect = LocalPlayer.CharacterAdded:Connect(function(newCharacter)
-    warn("TAS Player: Player respawned. Stopping playback and cleaning up.")
-    playerConnect:Disconnect() -- early disconnect should fix connection stacking issue.
-    -- Update character variables (important!)
-    Character = newCharacter
-    Humanoid = Character:WaitForChild("Humanoid")
-    RootPart = Character:WaitForChild("HumanoidRootPart")
-    FE2_Hitbox = Character:WaitForChild("FE2_Hitbox")
-    AnimateScript = Character:WaitForChild("Animate") -- Wait for animate script too
-    -- Attempt Reverse Animation Setup to return to clean slate for consistency.
-    --loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/UndoAnimation"))()
-    PlayAnimationFunc = ANIMATE_ENV and ANIMATE_ENV.playAnimation -- Re-get original func
-    FireAnimateEvent = AnimateScript.Sliding -- Re-get event
-
-    Cleanup() -- Disconnect old loops/events for the previous character
-    -- Optional: Automatically restart TAS on respawn?
-    -- task.wait(2) -- Short delay after respawn
-    -- if InitializeTAS() then
-    --     table.insert(Connections, RunService.Heartbeat:Connect(RunPlaybackLoop))
-    -- end
 end)
+
+local walljumpfix2
+walljumpfix2 = LP.Character.HumanoidRootPart.TouchEnded:Connect(function(Thing)
+    if badCheck(Thing) then
+        toggleTouch(false)
+    elseif Thing.Name == "RopeStart" then
+        toggleTouch(false)
+    end
+end)
+
+local function activateAnimation(CurrentAnimation)
+    if CurrentAnimation and CurrentAnimation[1] and CurrentAnimation[2] and LP.Character and LP.Character.Humanoid then
+        PlayAnim(CurrentAnimation[1],CurrentAnimation[2], LP.Character.Humanoid)
+        if CurrentAnimation[1] == "walk" then
+            Animate.setAnimationSpeed(.76) 
+        elseif CurrentAnimation[1] == "slide" then
+            task.spawn(doSlide, 0.10)
+        end
+    end
+end
+
+local Offset = Spawn.Position - NewV(0, 1000, 0)
+local OldFrame = 3
+
+local Loop
+local Death
+
+Death = LP.Character.Humanoid.Changed:Connect(function(Change)
+    if Change == "Health" and LP.Character.Humanoid.Health == 0 then
+        Death:Disconnect()
+        Loop:Disconnect()
+        CLMAIN.newAlert('Player Died.', Color3.new(1, 0, 0))
+    end
+end)
+
+local RootPart = LP.Character.HumanoidRootPart
+if Legit then
+    RootPart.RootJoint.Enabled = false
+end
+
+Loop = RS.Heartbeat:Connect(function(DeltaTime)
+    local NewFrame = #TAS
+    local Divider = OldFrame + 60
+    if Divider < #TAS then
+        NewFrame = Divider
+    end
+    for i = OldFrame, NewFrame do
+        local CurrentInfo = TAS[i]
+        if (tick() - TimeStart) < CurrentInfo.time then
+            break
+        elseif i >= #TAS then
+            CLMAIN.newAlert('TAS Run Finished!', Color3.new(0, 1, 0))
+            CLMAIN.newAlert('TAS Player By Tomato & Moz', Color3.new(0, 1, 0))
+            Death:Disconnect()
+            Loop:Disconnect()
+            Animate.playAnimation = PlayAnim
+            if LP.Character and LP.Character.Humanoid then
+                Animate.playAnimation("idle", 0.1, LP.Character.Humanoid)
+            end
+            walljumpfix:Disconnect()
+            walljumpfix2:Disconnect()
+            toggleTouch(true)
+            if Legit then
+                RootPart.RootJoint.Enabled = true
+            end
+        elseif (tick() - TimeStart) >= CurrentInfo.time then
+            OldFrame = i
+            local CCFrame = CurrentInfo.CCFrame
+            local CCameraCFrame = CurrentInfo.CCameraCFrame
+            if Mirrored == true then
+                RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], -CCFrame[3]) * AngC(-3.1415927410125732, CCFrame[5], -3.1415927410125732) + Offset
+                --workspace.CurrentCamera.CFrame = NewC(-CCameraCFrame[1], -CCameraCFrame[2], -CCameraCFrame[3]) * AngC(3.1415927410125732, CCameraCFrame[5], 3.1415927410125732) + Offset
+            elseif Mirrored == true and Legit then
+                
+            else
+                RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], CCFrame[3]) * AngC(CCFrame[4], CCFrame[5], CCFrame[6]) + Offset
+                CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
+            end
+            activateAnimation(CurrentInfo.AAnimation)
+        end
+    end
+end)
+end
