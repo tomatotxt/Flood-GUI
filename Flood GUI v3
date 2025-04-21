@@ -16,7 +16,7 @@ local CoreGui = game:GetService("CoreGui") -- Added for potential future use or 
 -- // Constants & Configuration //
 local CONFIG = {
     SCRIPT_VERSION_NAME = "Flood GUI v3",
-    LATEST_BUILD = 63.1,
+    LATEST_BUILD = 63.2,
     DEFAULT_BRANCH = "testing",
     UI_LIBRARY_URL = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
     TAS_BASE_URL = "https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/",
@@ -146,7 +146,7 @@ end
 -- // Initialization Functions //
 local function loadFE2Library()
     local success, library = pcall(function()
-        return require(ReplicatedStorage:FindFirstChild("SharedModules"):FindFirstChild("FE2Library"))
+        return require(ReplicatedStorage:FindFirstChild("FE2Library", true))
     end)
     if success then
         State.FE2Library = library
