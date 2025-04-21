@@ -191,7 +191,14 @@ local function ActivateAnimation(animInfo)
 	end
 
     if animName == "walk" then
-        ANIMATE_ENV.setAnimationSpeed(WALK_ANIM_SPEED) -- Assumes setAnimationSpeed exists in env [cite: 11, 12]
+	for i,v in pairs(ANIMATE_ENV) do
+		print(i,v)
+	end
+	if ANIMATE_ENV.setAnimationSpeed then
+        	ANIMATE_ENV.setAnimationSpeed(WALK_ANIM_SPEED) -- Assumes setAnimationSpeed exists in env [cite: 11, 12]
+	else
+		print("no setAnimationSpeed")
+	end
     elseif animName == "slide" then
         task.spawn(DoSlide) -- Use task.spawn for safety [cite: 12]
     end
