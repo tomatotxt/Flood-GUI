@@ -462,7 +462,7 @@ local function initializeUI()
     end)
 
     -- == TAS Tab ==
-    secTAS:NewButton("Create-TAS [WIP]", "Create a TAS recording. (Currently Disabled)", function()
+    secTAS:NewButton("Create-TAS [WIP]", "Create a TAS recording.", function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/TAS%20Record%20Voiz"))()
     end)
 
