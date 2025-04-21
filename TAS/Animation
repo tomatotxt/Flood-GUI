@@ -110,7 +110,7 @@ local SwingingEvent = AnimateScript:WaitForChild("Swinging")
 local UpdateEmoteEvent = AnimateScript:WaitForChild("UpdEmote")
 local UpdateAnimationsEvent = AnimateScript:WaitForChild("UpdAnimations")
 local EmoteFireEvent = AnimateScript:WaitForChild("EmoteFire")
-local ObfuscatedRemoteFunction = ReplicatedStorage.Remote:WaitForChild("ejZSTIQliqPRdUVZlWcZmaDGWapAAWxZ") -- Give it a meaningful name if known
+--local ObfuscatedRemoteFunction = ReplicatedStorage.Remote:WaitForChild("ejZSTIQliqPRdUVZlWcZmaDGWapAAWxZ") -- Give it a meaningful name if known
 
 -- Local Player
 local LocalPlayer = Players.LocalPlayer
@@ -778,6 +778,7 @@ end)
 
 -- External Event Connections
 
+--[[-- Maybe Anticheat Related
 ObfuscatedRemoteFunction.OnClientInvoke = function(locked)
 	isAnimationLocked = locked
 	if isAnimationLocked then
@@ -787,7 +788,7 @@ ObfuscatedRemoteFunction.OnClientInvoke = function(locked)
 	-- Return humanoid and current state enum
 	return Humanoid, Humanoid:GetState()
 end
-
+]]
 ToggleSwimEvent.Event:Connect(function(enabled)
 	if isSwimmingEnabled ~= enabled then
 		isSwimmingEnabled = enabled
