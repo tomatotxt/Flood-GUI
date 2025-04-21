@@ -392,8 +392,8 @@ local function InitializeTAS()
     end))
 
     -- Wait for start signal
-    repeat task.wait() until Character.HumanoidRootPart.Anchored == false
-	ShowAlert("Detected Start",Color3.fromRGB(255, 149, 5))
+    repeat task.wait() until Character:WaitForChild("HumanoidRootPart").Anchored == false
+    ShowAlert("Detected Start",Color3.fromRGB(255, 149, 5))
     StartTime = time() -- Use time() instead of tick()
     ShowAlert('TAS Running...', Color3.fromRGB(255, 149, 5))
 
