@@ -76,11 +76,12 @@ DeathConnect = LP.Character.Humanoid.Died:Connect(Cleanup)
 
 local Animate = getsenv(LP.Character.Animate)
 local Map = Multi:WaitForChild('NewMap', 9e6)
-local mapName = game:GetService("HttpService"):UrlEncode(Map:WaitForChild('Settings'):GetAttribute("MapName"))
-print(mapName)
+local realMapName = Map:WaitForChild('Settings'):GetAttribute("MapName")
+local mapName = game:GetService("HttpService"):UrlEncode(realMapName)
+print(realMapName)
 local success, path = 
     pcall(function()
-        return readfile("Flood-GUI/TAS FILES/" .. mapName .. ".json") -- game:HttpGet("https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/"..mapName..".json") -- may be more lag spikey but should work with wave
+        return readfile("Flood-GUI/TAS FILES/" .. realMapName .. ".json")
     end)
 
 if success and #path > 50 then
@@ -111,17 +112,18 @@ else
         CLMAIN.newAlert('Map cannot be mirrored.', Color3.fromRGB(255, 100, 0))
         Cleanup()
     else
-        if Map:WaitForChild('Settings'):FindFirstChild("_MirrorMap") then
-            CLMAIN.newAlert('Map is not mirrored.', Color3.fromRGB(255, 149, 5))
+        --if Map:WaitForChild('Settings'):FindFirstChild("_MirrorMap") then
+        --    CLMAIN.newAlert('Map is not mirrored.', Color3.fromRGB(255, 149, 5))
             Mirrored = false
-        else
-            CLMAIN.newAlert('Map is mirrored, TAS will be played mirrored!', Color3.fromRGB(255, 149, 5))
-            Mirrored = true
-        end
+        --else
+        --    CLMAIN.newAlert('Map is mirrored, TAS will be played mirrored!', Color3.fromRGB(255, 149, 5))
+        --    Mirrored = true
+        --end
     end
 end
 
 local Spawn = (function() -- new spawn finder by "tomato.txt" on discord
+    
     local Spawn = nil
 
     local connections = {}
@@ -135,9 +137,9 @@ local Spawn = (function() -- new spawn finder by "tomato.txt" on discord
             end))
         end
     end
-    repeat task.wait() until Spawn
+    repeat task.wait() until Spawn or Map:FindFirstChild("Spawn", true)
     CLMAIN.newAlert("Spawn found!", Color3.fromRGB(0, 255, 0))
-    return Spawn
+    return ((Spawn ~= nil) and Spawn) or Map:FindFirstChild("Spawn", true)
 end)()
 
 
@@ -266,7 +268,6 @@ Loop = RS.PostSimulation:Connect(function(DeltaTime) --Heartbeat
             walljumpfix:Disconnect()
             walljumpfix2:Disconnect()
             toggleTouch(true)
-            Cleanup()
             if Legit then
                 RootPart.RootJoint.Enabled = true
             end
