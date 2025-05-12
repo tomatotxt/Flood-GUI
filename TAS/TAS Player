@@ -63,8 +63,9 @@ local function Cleanup()
     LP.Character.Head:Destroy()
     LP.CharacterAdded:wait()
     local RootPart = LP.Character:WaitForChild("HumanoidRootPart")
-    for i = 1, 100 do
-        RootPart.Velocity = Vector3.new(0, 1, 100)
+    task.wait(1)
+    for i = 1, 50 do
+        RootPart.Velocity = Vector3.new(0, 1, 1000)
         task.wait()
     end
     return
