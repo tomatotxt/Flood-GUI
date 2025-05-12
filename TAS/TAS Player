@@ -1,4 +1,4 @@
-print("Diffrent player v2")
+print("Latest TAS Player built for V63.21")
 if Legit == nil then
     Legit = false
 end
@@ -40,45 +40,60 @@ local function doSlide(delay)
     task.wait(delay)
     toggleSlide(false)
 end
-local Alert = getsenv(LP.PlayerScripts.CL_MAIN_GameScript).newAlert
+
+-- IMPORTANT
+local CLMAIN = getsenv(LP.PlayerScripts.CL_MAIN_GameScript) -- {newAlert = print}
+local Alert = CLMAIN.newAlert
+Alert("Latest TAS Player built for V63.21", Color3.new(1, 1, 1))
 local Multi = workspace.Multiplayer
 local RS = game:GetService('RunService')
 
--- IMPORTANT
-local CLMAIN = getsenv(LP.PlayerScripts.CL_MAIN_GameScript)
-local oldalert
-oldalert = hookfunction(CLMAIN.newAlert, function(...)
-    return oldalert(...)
-end)
 if not getrenv().alreadystarted then
     CLMAIN.newAlert("TAS Player Started.", Color3.fromRGB(255, 149, 5))
     getrenv().alreadystarted = true
 else
     CLMAIN.newAlert("TAS Player ready for next map.", Color3.new(0,1,.5))
 end
-local HTTPService = game:GetService("HttpService")
+
+local DeathConnect
+local function Cleanup()
+    DeathConnect:Disconnect()
+    print("Cleaning Up..")
+    CLMAIN.newAlert("Resetting..", Color3.new(0, 1, 1))
+    LP.Character.Head:Destroy()
+    LP.CharacterAdded:wait()
+    local RootPart = LP.Character:WaitForChild("HumanoidRootPart")
+    for i = 1, 100 do
+        RootPart.Velocity = Vector3.new(0, 1, 100)
+        task.wait()
+    end
+    return
+end
+DeathConnect = LP.Character.Humanoid.Died:Connect(Cleanup)
+
 local Animate = getsenv(LP.Character.Animate)
 local Map = Multi:WaitForChild('NewMap', 9e6)
-local mapNamePrime = Map:WaitForChild('Settings'):GetAttribute("MapName")
-local mapName = HTTPService:UrlEncode(mapNamePrime)
+local mapName = game:GetService("HttpService"):UrlEncode(Map:WaitForChild('Settings'):GetAttribute("MapName"))
 print(mapName)
-local path
-local real, reason = pcall(function()
-    path = readfile("Flood-GUI/TAS FILES/" .. mapNamePrime .. ".json")
-end)
-if real and #path > 50 then
+local success, path = 
+    pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/"..mapName..".json") -- may be more lag spikey but should work with wave readfile("Flood-GUI/TAS FILES/" .. mapName .. ".json")
+    end)
+
+if success and #path > 50 then
     print("TAS FILE IS REAL")
 else
     print("TAS FILE BROKEN")
-    warn(reason)
-    return
+    Cleanup()
+    -- Cleanup and Reset
+    -- Respawn
+    -- Set velocity to 0, 0, 1000
 end
-local TAS = HTTPService:JSONDecode(path)
+local TAS = game:GetService("HttpService"):JSONDecode(path)
 print(#path)
 if not TAS then
-    CLMAIN.newAlert("TAS file for "..mapName.." is not in workspace folder!", Color3.new(1,0,0))
-    LP.Character.Humanoid.Health = 0
-    LP.CharacterAdded:wait()
+    CLMAIN.newAlert("TAS file for "..mapName.." does not exist!", Color3.new(1,0,0))
+    Cleanup()
 else
 CLMAIN.newAlert("TAS Loaded!")
 repeat task.wait() until Map.Name == "Map"
@@ -91,6 +106,7 @@ if HighlightPath then
 else
     if SkipMirroredMaps[mapName] then
         CLMAIN.newAlert('Map cannot be mirrored.', Color3.fromRGB(255, 100, 0))
+        Cleanup()
     else
         if Map:WaitForChild('Settings'):FindFirstChild("_MirrorMap") then
             CLMAIN.newAlert('Map is not mirrored.', Color3.fromRGB(255, 149, 5))
@@ -121,10 +137,8 @@ local Spawn = (function() -- new spawn finder by "tomato.txt" on discord
     return Spawn
 end)()
 
---game:GetService("ReplicatedStorage").Remote.StartClientMapTimer.OnClientEvent:Wait()
-repeat task.wait() until game.Players.LocalPlayer.Character
-Character = game.Players.LocalPlayer.Character
-repeat task.wait() until Character:WaitForChild("HumanoidRootPart").Anchored == false
+
+repeat task.wait() until LP.Character.HumanoidRootPart.Anchored == false
 local TimeStart = tick()
 CLMAIN.newAlert('TAS Running..', Color3.fromRGB(255, 149, 5))
 PlayAnim = Animate.playAnimation
@@ -148,7 +162,7 @@ local FE2_Hitbox = LP.Character.FE2_Hitbox
 FE2_Hitbox.CanTouch = true
 
 local function toggleTouch(bool)
-    --FE2_Hitbox.CanTouch = bool
+    FE2_Hitbox.CanTouch = true
 end
 
 function isRandomString(str) -- basicly detects if button 99% of the time just checks if all capital
@@ -182,7 +196,7 @@ walljumpfix = LP.Character.HumanoidRootPart.Touched:Connect(function(Thing)
     elseif Thing.Name == "RopeStart" then
         toggleTouch(true)
     else
-        print("Didn't Touch:", Thing:GetFullName())
+        --print("Didn't Touch:", Thing:GetFullName())
     end
 end)
 
@@ -201,7 +215,7 @@ local function activateAnimation(CurrentAnimation)
         if CurrentAnimation[1] == "walk" then
             Animate.setAnimationSpeed(.76) 
         elseif CurrentAnimation[1] == "slide" then
-            task.spawn(doSlide, 0.10)
+            task.spawn(doSlide, 0.25)
         end
     end
 end
@@ -221,14 +235,14 @@ Death = LP.Character.Humanoid.Changed:Connect(function(Change)
 end)
 
 local RootPart = LP.Character.HumanoidRootPart
-local Humanoid = LP.Character.Humanoid
 if Legit then
     RootPart.RootJoint.Enabled = false
 end
 
 Loop = RS.Heartbeat:Connect(function(DeltaTime)
+    LP.Character.Humanoid.Jump = true
     local NewFrame = #TAS
-    local Divider = OldFrame + 60
+    local Divider = OldFrame + 30
     if Divider < #TAS then
         NewFrame = Divider
     end
@@ -265,8 +279,6 @@ Loop = RS.Heartbeat:Connect(function(DeltaTime)
                 --CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
             end
             activateAnimation(CurrentInfo.AAnimation)
-            -- Walljump Sticking to player ? fix
-            Humanoid.Jump = true
         end
     end
 end)
