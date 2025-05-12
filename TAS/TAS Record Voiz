@@ -1,3 +1,4 @@
+print("Latest TAS Creator built for FE2CM v63.01 and whatever normal FE2")
 local Keybinds = {
     AddSavestate = "One",
     RemoveSavestate = "Two",
@@ -42,7 +43,7 @@ local FrameCount
 local CapLockPause
 local MapName -- add to ui later maybe ?
 local AnimationHookConnection
-queue_on_teleport('warn("lmao")')
+
 local function getCurrentCFrame()
     local RealCframe
     if AnimationState[1] and AnimationState[1]:lower():match("swim") then
@@ -89,6 +90,11 @@ end
 
 local function SetPrimaryPart() -- new spawn finder by "_tomato." on discord
     local Map = game.Workspace.Multiplayer:WaitForChild("Map")
+    local CommunityMapSpawn = Map:FindFirstChild("Spawn", true)
+    if CommunityMapSpawn then
+        Map.PrimaryPart = CommunityMapSpawn
+        return
+    end
     local Spawn = nil
     local connections = {}
     for _,v in ipairs(Map:GetChildren()) do
@@ -1733,6 +1739,11 @@ local function SetUpMap()
     end
     print("Map processed")
     Map = RealMap:Clone()
+    for i,v in pairs(workspace:GetChildren()) do
+        if v.Name == "Map" then
+            v:Destroy()
+        end
+    end
     Map.Parent = game.Workspace
     --Map:MoveTo(Vector3.new(0,1000,0))
     SpawnPos = Map.PrimaryPart.Position 
@@ -1814,7 +1825,9 @@ local function SetUpMap()
             end
         end
     end
-    game.Workspace.Multiplayer.Map:Destroy()
+    if game.Workspace.Multiplayer:FindFirstChild("Map") then
+        game.Workspace.Multiplayer.Map:Destroy()
+    end
     print("Finished setting up map"..RunID)
 end
 
@@ -1897,8 +1910,7 @@ local function CollisionToggler()
         MouseTarget.Transparency = 0.8
     end
 end
-
--- beginning of fram forward
+--Start of Frame forward
 local isFrameForwardHeld = false
 local FrameForwardLoopThread
 
@@ -2157,8 +2169,12 @@ local function SaveRun()
     Alert("Saved", Color3.fromRGB(0, 255, 0), 1)
 end
 
+
+print("Got Up to line 2160")
 --ReplicatedStorage.Remote.StartClientMapTimer.OnClientEvent:Wait()
+workspace.Multiplayer:WaitForChild("NewMap")
 repeat wait() until game.Players.LocalPlayer.Character.HumanoidRootPart.Anchored == false
+print("Map Start")
 task.wait(1)
 SetUpMap()
 
