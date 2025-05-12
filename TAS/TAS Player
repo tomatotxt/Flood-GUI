@@ -80,7 +80,7 @@ local mapName = game:GetService("HttpService"):UrlEncode(Map:WaitForChild('Setti
 print(mapName)
 local success, path = 
     pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/"..mapName..".json") -- may be more lag spikey but should work with wave readfile("Flood-GUI/TAS FILES/" .. mapName .. ".json")
+        return readfile("Flood-GUI/TAS FILES/" .. mapName .. ".json") -- game:HttpGet("https://raw.githubusercontent.com/Swelllow/Testing/main/Flood-GUI-main/TAS%20FILES/"..mapName..".json") -- may be more lag spikey but should work with wave
     end)
 
 if success and #path > 50 then
