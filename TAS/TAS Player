@@ -60,11 +60,13 @@ local function Cleanup()
     DeathConnect:Disconnect()
     print("Cleaning Up..")
     CLMAIN.newAlert("Resetting..", Color3.new(0, 1, 1))
-    LP.Character.Head:Destroy()
+    if LP.Character and LP.Character.Head then
+        LP.Character.Head:Destroy()
+    end
     LP.CharacterAdded:wait()
-    local RootPart = LP.Character:WaitForChild("HumanoidRootPart")
     task.wait(1)
-    for i = 1, 50 do
+    local RootPart = LP.Character:WaitForChild("HumanoidRootPart")
+    for i = 1, 200 do
         RootPart.Velocity = Vector3.new(0, 1, 1000)
         task.wait()
     end
@@ -91,7 +93,7 @@ else
     -- Set velocity to 0, 0, 1000
 end
 local TAS = game:GetService("HttpService"):JSONDecode(path)
-print(#path)
+print("Total Frames:", #TAS)
 if not TAS then
     CLMAIN.newAlert("TAS file for "..mapName.." does not exist!", Color3.new(1,0,0))
     Cleanup()
@@ -240,7 +242,7 @@ if Legit then
     RootPart.RootJoint.Enabled = false
 end
 
-Loop = RS.Heartbeat:Connect(function(DeltaTime)
+Loop = RS.PostSimulation:Connect(function(DeltaTime) --Heartbeat
     LP.Character.Humanoid.Jump = true
     local NewFrame = #TAS
     local Divider = OldFrame + 30
@@ -256,6 +258,7 @@ Loop = RS.Heartbeat:Connect(function(DeltaTime)
             CLMAIN.newAlert('TAS Player By Tomato & Moz', Color3.new(0, 1, 0))
             Death:Disconnect()
             Loop:Disconnect()
+            DeathConnect:Disconnect()
             Animate.playAnimation = PlayAnim
             if LP.Character and LP.Character.Humanoid then
                 Animate.playAnimation("idle", 0.1, LP.Character.Humanoid)
@@ -263,6 +266,7 @@ Loop = RS.Heartbeat:Connect(function(DeltaTime)
             walljumpfix:Disconnect()
             walljumpfix2:Disconnect()
             toggleTouch(true)
+            Cleanup()
             if Legit then
                 RootPart.RootJoint.Enabled = true
             end
