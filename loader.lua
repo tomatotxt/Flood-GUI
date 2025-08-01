@@ -1,5 +1,5 @@
 local Branch = ...
-local FloodGUIRepo = "https://raw.githubusercontent.com/ImMejor35/Flood-GUI/"..Branch
+local FloodGUIRepo = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/"..Branch
 
 if not isfolder("Flood-GUI") then
     makefolder("Flood-GUI")
