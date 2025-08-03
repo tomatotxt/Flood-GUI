@@ -55,17 +55,13 @@ else
     CLMAIN.newAlert("TAS Player ready for next map.", Color3.new(0,1,.5))
 end
 
-local CleanedUp = false
 local DeathConnect
 local function Cleanup()
-    if CleanedUp == true then error("Cleaned.") end
-    CleanedUp = true
     DeathConnect:Disconnect()
     print("Cleaning Up..")
     CLMAIN.newAlert("Resetting..", Color3.new(0, 1, 1))
-    local Head = LP.Character:FindFirstChild("Head")
-    if LP.Character and Head then
-        Head:Destroy()
+    if LP.Character and LP.Character.Head then
+        LP.Character.Head:Destroy()
     end
     LP.CharacterAdded:wait()
     task.wait(1)
@@ -74,14 +70,12 @@ local function Cleanup()
         RootPart.Velocity = Vector3.new(0, 1, 1000)
         task.wait()
     end
-    error("Cleaned Up!")
+    return
 end
 DeathConnect = LP.Character.Humanoid.Died:Connect(Cleanup)
 
 local Animate = getsenv(LP.Character.Animate)
-Multi:WaitForChild('NewMap', 9e6)
-local Map = Multi:WaitForChild('Map', 9e6)
-print("Map")
+local Map = Multi:WaitForChild('NewMap', 9e6)
 local realMapName = Map:WaitForChild('Settings'):GetAttribute("MapName")
 local mapName = game:GetService("HttpService"):UrlEncode(realMapName)
 print(realMapName)
@@ -91,10 +85,9 @@ local success, path =
     end)
 
 if success and #path > 50 then
-    Alert("TAS FILE IS REAL")
+    print("TAS FILE IS REAL")
 else
-    Alert("TAS FILE BROKEN")
-    print(path)
+    print("TAS FILE BROKEN")
     Cleanup()
     -- Cleanup and Reset
     -- Respawn
@@ -224,7 +217,7 @@ end)
 local function activateAnimation(CurrentAnimation)
     local CurrentAnimation = CurrentAnimation
     if LP.Character.Humanoid:GetState() == Enum.HumanoidStateType.Physics then
-        CurrentAnimation[1] = "swing"
+        CurrentAnimation[1] == "swing"
     end
     if CurrentAnimation and CurrentAnimation[1] and CurrentAnimation[2] and LP.Character and LP.Character.Humanoid then
         PlayAnim(CurrentAnimation[1],CurrentAnimation[2], LP.Character.Humanoid)
@@ -287,7 +280,7 @@ Loop = RS.PostSimulation:Connect(function(DeltaTime) --Heartbeat
             local CCFrame = CurrentInfo.CCFrame
             local CCameraCFrame = CurrentInfo.CCameraCFrame
             RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], CCFrame[3]) * AngC(CCFrame[4], CCFrame[5], CCFrame[6]) + Offset
-            CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
+            --CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
             activateAnimation(CurrentInfo.AAnimation)
         end
     end
