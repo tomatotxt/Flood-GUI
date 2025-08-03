@@ -217,7 +217,7 @@ end)
 local function activateAnimation(CurrentAnimation)
     local CurrentAnimation = CurrentAnimation
     if LP.Character.Humanoid:GetState() == Enum.HumanoidStateType.Physics then
-        CurrentAnimation[1] == "swing"
+        CurrentAnimation[1] = "swing"
     end
     if CurrentAnimation and CurrentAnimation[1] and CurrentAnimation[2] and LP.Character and LP.Character.Humanoid then
         PlayAnim(CurrentAnimation[1],CurrentAnimation[2], LP.Character.Humanoid)
