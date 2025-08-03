@@ -382,6 +382,7 @@ local function initializeUI()
     end)
     State.AutoPlayEnabled = false -- Set initial state
 
+--[[
     secAuto:NewButton("Download TAS files", "Downloads required TAS files from GitHub.", function()
         local tasFolderPath = CONFIG.FILES_FOLDER .. "/" .. CONFIG.TAS_SUBFOLDER
         if getgenv().isfolder and not isfolder(tasFolderPath) then
@@ -433,7 +434,7 @@ local function initializeUI()
             showAlert(("Finished downloading TAS files. Success: %d, Failed/Skipped: %d"):format(downloadedCount, failedCount + (#State.Maps - downloadedCount - failedCount)), CONFIG.ALERT_COLORS.INFO)
         end)
     end)
-
+]]
     -- == Local Player Tab ==
     secLocalPlayer:NewSlider("Walkspeed", "Changes your movement speed.", CONFIG.MAX_WALKSPEED, CONFIG.DEFAULT_WALKSPEED, function(value)
         State.WalkSpeed = math.max(1, value) -- Ensure walkspeed is at least 1
