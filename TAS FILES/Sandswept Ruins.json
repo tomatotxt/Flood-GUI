@@ -1,0 +1,975 @@
+getgenv().Animation = {}
+
+
+-- Services
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+if getgenv().AnimationLoaded then
+	return
+end
+getgenv().AnimationLoaded = true
+local Character = Players.LocalPlayer.Character
+Character.Humanoid.Died:Connect(function()
+	getgenv().AnimationLoaded = false
+end)
+local AnimateScript = Character.Animate
+AnimateScript.Disabled = true
+
+-- Constants
+local DEFAULT_EMOTE_ID = 740015671
+local ANIMATION_ASSET_FORMAT = "rbxassetid://%s"
+local HTTP_ASSET_FORMAT = "http://www.roblox.com/asset/?id=%s" -- Kept for legacy compatibility if needed
+
+local IDLE_TRANSITION_TIME = 0.1
+local JUMP_TRANSITION_TIME = 0.1
+local FALL_TRANSITION_TIME  = 0.3
+local SWIM_TRANSITION_TIME  = 0.1
+local SIT_TRANSITION_TIME  = 0.5
+local TOOL_TRANSITION_TIME  = 0.1
+local SLIDE_TRANSITION_TIME  = 0.1
+local EMOTE_TRANSITION_TIME  = 0.1
+
+local WALK_SPEED_RATIO  = 14.5
+local RUN_SPEED_RATIO  = 26.0 -- Assuming 'walk' animation is used for running based on context
+local CLIMB_SPEED_RATIO  = 12.0
+local DEFAULT_ANIM_SPEED  = 1.0
+local ANIM_RESET_SPEED  = 0.7692307692307693 -- ~10/13 ?
+
+local JUMP_STATE_DURATION  = 0.3
+local TOOL_ACTIVE_DURATION  = 0.3
+local EMOTE_COOLDOWN_DURATION  = 3.0
+
+-- Limb Angles
+local SIT_SHOULDER_ANGLE  = 1.57 -- Radians
+local SIT_HIP_ANGLE  = 1.57 -- Radians
+
+-- Animation States / Names
+local STATE_IDLE  = "idle"
+local STATE_WALK  = "walk"
+-- local STATE_RUN = "run" -- Seems unused/replaced by walk speed adjustment
+local STATE_JUMP  = "jump"
+local STATE_FALL  = "fall"
+local STATE_SWIM_IDLE  = "swimidle"
+local STATE_SWIM  = "swim"
+local STATE_CLIMB  = "climb"
+local STATE_SIT  = "sit"
+local STATE_SLIDE  = "slide"
+local STATE_AIRDIVE  = "airdive"
+local STATE_SWING  = "swing"
+local STATE_WALLHANG  = "wallhang"
+local STATE_TOOL_NONE  = "toolnone"
+local STATE_TOOL_SLASH  = "toolslash"
+local STATE_TOOL_LUNGE  = "toollunge"
+local STATE_WAVE  = "wave"
+local STATE_POINT  = "point"
+local STATE_DANCE1  = "dance1"
+local STATE_DANCE2  = "dance2"
+local STATE_DANCE3  = "dance3"
+local STATE_LAUGH  = "laugh"
+local STATE_CHEER  = "cheer"
+local STATE_CUSTOM_EMOTE  = "customemote"
+
+-- Humanoid States (Mapping to Roblox Enum might be cleaner but keeping strings for now)
+local HSTATE_STANDING  = "Standing"
+local HSTATE_RUNNING  = "Running"
+local HSTATE_DEAD  = "Dead"
+local HSTATE_JUMPING  = "Jumping"
+local HSTATE_CLIMBING  = "Climbing"
+local HSTATE_GETTING_UP  = "GettingUp"
+local HSTATE_FREEFALL  = "FreeFall"
+local HSTATE_FALLING_DOWN  = "FallingDown"
+local HSTATE_SEATED  = "Seated"
+local HSTATE_PLATFORM_STANDING  = "PlatformStanding"
+-- Note: Swimming maps to Running/Standing based on speed in the original code
+
+-- References
+local Character = AnimateScript.Parent
+local Humanoid = Character:WaitForChild("Humanoid")
+local Torso = Character:WaitForChild("Torso") -- R6 Specific
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local SwimVelocity = HumanoidRootPart:WaitForChild("SwimVel") -- Assuming this is a BodyVelocity or similar
+
+-- R6 Motor6Ds
+local RightShoulder = Torso:WaitForChild("Right Shoulder")
+local LeftShoulder = Torso:WaitForChild("Left Shoulder")
+local RightHip = Torso:WaitForChild("Right Hip")
+local LeftHip = Torso:WaitForChild("Left Hip")
+Torso:WaitForChild("Neck") -- Ensure Neck exists
+
+-- Animation Asset IDs (Loaded Dynamically)
+local AnimIDs = ReplicatedStorage.Animations:WaitForChild("AnimIDs")
+
+-- Events (Ensure they exist before connecting)
+local ToggleSwimEvent = AnimateScript:WaitForChild("ToggleSwim")
+local SlidingEvent = AnimateScript:WaitForChild("Sliding")
+local AirDivingEvent = AnimateScript:WaitForChild("AirDiving")
+local WalljumpEvent = AnimateScript:WaitForChild("Walljump")
+local SwingingEvent = AnimateScript:WaitForChild("Swinging")
+local UpdateEmoteEvent = AnimateScript:WaitForChild("UpdEmote")
+local UpdateAnimationsEvent = AnimateScript:WaitForChild("UpdAnimations")
+local EmoteFireEvent = AnimateScript:WaitForChild("EmoteFire")
+--local ObfuscatedRemoteFunction = ReplicatedStorage.Remote:WaitForChild("ejZSTIQliqPRdUVZlWcZmaDGWapAAWxZ") -- Give it a meaningful name if known
+
+-- Local Player
+local LocalPlayer = Players.LocalPlayer
+
+-- State Variables
+local currentHumanoidState = HSTATE_STANDING
+local currentMoveSpeed = 0
+local jumpStateTimer = 0 -- Timer for transition from jump to fall anim
+local lastEmoteTime = time() - EMOTE_COOLDOWN_DURATION
+local lastFrameTime = time() -- For calculating deltaTime in move()
+
+-- Animation Tracks and Data
+local activeAnimationTracks = {} -- Stores { name = { count, totalWeight, connections, anims = { {anim, weight} } } }
+local currentMainAnimTrack = nil
+local currentMainAnimInstance = nil -- The actual Animation object being played
+local currentMainAnimName = ""
+local currentAnimSpeed = DEFAULT_ANIM_SPEED
+
+local currentToolAnimTrack = nil
+local currentToolAnimInstance = nil -- The actual tool Animation object being played
+local currentToolAnimName = ""
+local currentToolState = STATE_TOOL_NONE
+local toolActiveTimer = 0
+
+local swimAngleAnimTracks = {} -- Stores loaded AnimationTracks for swim angles
+local swimAngleAnimations = {} -- Stores the raw Animation instances for swim angles
+
+-- Movement / State Flags
+local isSwimmingEnabled = false
+getgenv().Animation.isSliding = false
+local isWallHanging = false
+local isSwinging = false
+local isAnimationLocked = false -- Used by the remote function
+
+-- Emote Configuration
+local danceEmotes = { STATE_DANCE1, STATE_DANCE2, STATE_DANCE3 }
+local emoteLooping = { -- Tracks which emotes should loop (play again on end)
+	[STATE_WAVE] = false,
+	[STATE_POINT] = false,
+	[STATE_DANCE1] = true,
+	[STATE_DANCE2] = true,
+	[STATE_DANCE3] = true,
+	[STATE_LAUGH] = false,
+	[STATE_CHEER] = false,
+	[STATE_CUSTOM_EMOTE] = false, -- Default, can be overridden? Seems unlikely based on code.
+}
+
+-- Pre-defined Animation data (Used if not overridden by children Animation instances)
+local defaultAnimationData = {
+	[STATE_IDLE] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "180435571"), weight = 9 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "180435792"), weight = 1 },
+	},
+	[STATE_WALK] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Walk.Value), weight = 10 },
+	},
+	--[[ No 'run' animation ID provided, handled by scaling 'walk'
+    [STATE_RUN] = {
+        -- { id = "run.xml", weight = 10 } -- This was invalid
+        { id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Run.Value), weight = 10 } -- Assuming an ID exists
+    },
+    ]]
+	[STATE_JUMP] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Jump.Value), weight = 10 },
+	},
+	[STATE_FALL] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Fall.Value), weight = 10 },
+	},
+	[STATE_SWIM_IDLE] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.SwimIdle.Value), weight = 10 },
+	},
+	[STATE_SWIM] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Swim.Value), weight = 10 },
+	},
+	[STATE_CLIMB] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "180436334"), weight = 10 },
+	},
+	[STATE_SIT] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "178130996"), weight = 10 },
+	},
+	[STATE_SLIDE] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Slide.Value), weight = 10 },
+	},
+	[STATE_AIRDIVE] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.AirDive.Value), weight = 10 },
+	},
+	[STATE_SWING] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Swing.Value), weight = 10 },
+	},
+	[STATE_WALLHANG] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.WallHang.Value), weight = 10 },
+	},
+	[STATE_TOOL_NONE] = {
+		-- { id = string.format(HTTP_ASSET_FORMAT, "14350782140"), weight = 10 } -- Updated? Original was this
+		{ id = string.format(HTTP_ASSET_FORMAT, "507660936"), weight = 10 } -- Common R6 ToolNone ID
+	},
+	[STATE_TOOL_SLASH] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "129967390"), weight = 10 }, -- Common R6 ToolSlash ID
+	},
+	[STATE_TOOL_LUNGE] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "129967478"), weight = 10 }, -- Common R6 ToolLunge ID
+	},
+	[STATE_WAVE] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "128777973"), weight = 10 },
+	},
+	[STATE_POINT] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "128853357"), weight = 10 },
+	},
+	[STATE_DANCE1] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "182435998"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491037"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491065"), weight = 10 },
+	},
+	[STATE_DANCE2] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "182436842"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491248"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491277"), weight = 10 },
+	},
+	[STATE_DANCE3] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "182436935"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491368"), weight = 10 },
+		{ id = string.format(HTTP_ASSET_FORMAT, "182491423"), weight = 10 },
+	},
+	[STATE_LAUGH] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "129423131"), weight = 10 },
+	},
+	[STATE_CHEER] = {
+		{ id = string.format(HTTP_ASSET_FORMAT, "129423030"), weight = 10 },
+	},
+	[STATE_CUSTOM_EMOTE] = {
+		{ id = string.format(ANIMATION_ASSET_FORMAT, AnimIDs.Emote.Value), weight = 10 },
+	},
+}
+
+-- Functions
+
+-- Disconnects all connections in a table
+local function disconnectTableConnections(connections)
+	if not connections then
+		return
+	end
+	for _, connection in ipairs(connections) do
+		if connection then
+			connection:Disconnect()
+		end
+	end
+	table.clear(connections)
+end
+
+-- Loads/reloads animation data for a specific state (e.g., "idle", "walk")
+local function configureAnimationSet(animName, defaultSetData)
+	-- Clear existing configuration and connections
+	if activeAnimationTracks[animName] then
+		disconnectTableConnections(activeAnimationTracks[animName].connections)
+	end
+	activeAnimationTracks[animName] = {
+		count = 0,
+		totalWeight = 0,
+		connections = {},
+		anims = {},
+	}
+
+	local animContainer = AnimateScript:FindFirstChild(animName)
+	local currentSet = activeAnimationTracks[animName]
+
+	-- Listen for future changes if a container Folder exists
+	if animContainer then
+		table.insert(currentSet.connections, animContainer.ChildAdded:Connect(function(_)
+			configureAnimationSet(animName, defaultSetData)
+		end))
+		table.insert(currentSet.connections, animContainer.ChildRemoved:Connect(function(_)
+			configureAnimationSet(animName, defaultSetData)
+		end))
+
+		-- Load animations from the container
+		local index = 1
+		for _, child in ipairs(animContainer:GetChildren()) do
+			if child:IsA("Animation") then
+				-- Listen for changes to the Animation instance itself (e.g., AnimationId)
+				table.insert(currentSet.connections, child.Changed:Connect(function(_)
+					configureAnimationSet(animName, defaultSetData)
+				end))
+
+				local weightInstance = child:FindFirstChild("Weight")
+				local weight = weightInstance and weightInstance.Value or 1
+
+				currentSet.anims[index] = { anim = child, weight = weight }
+				currentSet.count += 1
+				currentSet.totalWeight += weight
+				index += 1
+
+				-- Also listen for changes to the Weight value
+				if weightInstance then
+					table.insert(currentSet.connections, weightInstance.Changed:Connect(function(_)
+						configureAnimationSet(animName, defaultSetData)
+					end))
+				end
+			end
+		end
+	end
+
+	-- If no animations were loaded from the container, use the default set
+	if currentSet.count <= 0 then
+		for index, data in ipairs(defaultSetData) do
+			local animInstance = Instance.new("Animation")
+			animInstance.Name = animName
+			animInstance.AnimationId = data.id
+			-- No need to parent these default instances
+
+			local weight = data.weight or 1
+			currentSet.anims[index] = { anim = animInstance, weight = weight }
+			currentSet.count += 1
+			currentSet.totalWeight += weight
+		end
+	end
+end
+
+-- Selects and returns a weighted random animation instance from a set
+local function selectWeightedAnimation(animName)
+	local animSet = activeAnimationTracks[animName]
+	if not animSet or animSet.count == 0 then
+		warn("Animation set not found or empty:", animName)
+		return nil -- No animation available
+	end
+
+	local randomWeight = math.random(1, animSet.totalWeight)
+	local currentWeight = 0
+	for _, data in ipairs(animSet.anims) do
+		currentWeight += data.weight
+		if randomWeight <= currentWeight then
+			return data.anim
+		end
+	end
+
+	-- Fallback (should ideally not happen if totalWeight is correct)
+	return animSet.anims[1] and animSet.anims[1].anim
+end
+
+-- Stops the current main animation track
+local function stopMainAnimation(fadeTime)
+	if currentMainAnimTrack then
+		currentMainAnimTrack:Stop(fadeTime)
+		-- Disconnect the KeyframeReached connection *before* destroying
+		if currentMainAnimTrack.KeyframeReached then
+			-- Find and disconnect specific connection if stored, otherwise disconnect all (less ideal)
+			-- For simplicity here, assume only one connection needs managing per track lifecycle
+		end
+		currentMainAnimTrack:Destroy()
+		currentMainAnimTrack = nil
+	end
+	currentMainAnimInstance = nil
+	currentMainAnimName = ""
+end
+
+-- Adjusts the speed of the currently playing main animation
+local function setMainAnimationSpeed(speed)
+	speed = speed or DEFAULT_ANIM_SPEED
+	if speed ~= currentAnimSpeed and currentMainAnimTrack then
+		currentAnimSpeed = speed
+		currentMainAnimTrack:AdjustSpeed(currentAnimSpeed)
+	end
+end
+getgenv().Animation.setAnimationSpeed = setMainAnimationSpeed
+-- Handles KeyframeReached events for the main animation track
+local function onMainAnimKeyframeReached(keyframeName)
+	if keyframeName == "End" then
+		local animName = currentMainAnimName -- Cache before stopping potentially changes it
+		local shouldLoop = emoteLooping[animName] or false
+
+		if shouldLoop then
+			-- Restart the same animation
+			local speed = currentAnimSpeed -- Cache speed
+			playAnimation(animName, 0) -- Play immediately, no fade in
+			setMainAnimationSpeed(speed) -- Restore speed
+		else
+			-- Default back to idle
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+		end
+	end
+end
+
+-- Plays an animation from the main animation sets
+function playAnimation(animName, fadeTime)
+	if isAnimationLocked then return end -- Prevent changes if locked
+
+	local requiredState = nil
+	if getgenv().Animation.isSliding then requiredState = STATE_SLIDE end
+	if isSwinging then requiredState = STATE_SWING end
+	if isWallHanging then requiredState = STATE_WALLHANG end
+
+	-- Only allow specific animations if in a special state, otherwise allow any
+	if requiredState and animName ~= requiredState then
+		return
+	end
+
+	local selectedAnimInstance = selectWeightedAnimation(animName)
+	if not selectedAnimInstance then
+		warn("Could not select animation for:", animName)
+		return -- Don't proceed if no animation found/selected
+	end
+
+	-- Only play if the animation instance is different from the current one
+	if selectedAnimInstance ~= currentMainAnimInstance then
+		stopMainAnimation(fadeTime) -- Stop the previous animation with fade
+
+		currentAnimSpeed = DEFAULT_ANIM_SPEED -- Reset speed for new animation
+		currentMainAnimInstance = selectedAnimInstance
+		currentMainAnimName = animName -- Store the name of the set being played
+
+		local success, track = pcall(Humanoid.LoadAnimation, Humanoid, selectedAnimInstance)
+		if success and track then
+			currentMainAnimTrack = track
+			currentMainAnimTrack.Priority = Enum.AnimationPriority.Action -- Adjust as needed
+			currentMainAnimTrack.KeyframeReached:Connect(onMainAnimKeyframeReached)
+			currentMainAnimTrack:Play(fadeTime)
+		else
+			warn("Failed to load animation:", selectedAnimInstance and selectedAnimInstance.AnimationId, track)
+			currentMainAnimInstance = nil
+			currentMainAnimName = ""
+		end
+	end
+end
+getgenv().Animation.playAnimation = playAnimation
+
+-- Stops the current tool animation track
+local function stopToolAnimation(fadeTime)
+	if currentToolAnimTrack then
+		currentToolAnimTrack:Stop(fadeTime)
+		-- Assuming only one KeyframeReached connection per track lifecycle
+		currentToolAnimTrack:Destroy()
+		currentToolAnimTrack = nil
+	end
+	currentToolAnimInstance = nil
+	currentToolAnimName = ""
+end
+
+-- Handles KeyframeReached events for the tool animation track
+local function onToolAnimKeyframeReached(keyframeName)
+	if keyframeName == "End" then
+		-- Default back to toolnone state/animation
+		playToolAnimation(STATE_TOOL_NONE, 0)
+	end
+end
+
+-- Plays an animation from the tool animation sets
+function playToolAnimation(animName, fadeTime)
+	local selectedAnimInstance = selectWeightedAnimation(animName)
+	if not selectedAnimInstance then
+		warn("Could not select tool animation for:", animName)
+		return -- Don't proceed if no animation found/selected
+	end
+
+	-- Only play if the animation instance is different from the current one
+	if selectedAnimInstance ~= currentToolAnimInstance then
+		stopToolAnimation(fadeTime) -- Stop the previous tool animation with fade
+
+		currentToolAnimInstance = selectedAnimInstance
+		currentToolAnimName = animName -- Store the name of the set being played
+
+		local success, track = pcall(Humanoid.LoadAnimation, Humanoid, selectedAnimInstance)
+		if success and track then
+			currentToolAnimTrack = track
+			currentToolAnimTrack.Priority = Enum.AnimationPriority.Action2 -- Higher priority for tools usually
+			currentToolAnimTrack.Looped = false -- Tool anims usually don't loop by default
+			currentToolAnimTrack.KeyframeReached:Connect(onToolAnimKeyframeReached)
+			currentToolAnimTrack:Play(fadeTime)
+		else
+			warn("Failed to load tool animation:", selectedAnimInstance and selectedAnimInstance.AnimationId, track)
+			currentToolAnimInstance = nil
+			currentToolAnimName = ""
+		end
+	end
+end
+
+-- Finds the currently equipped tool
+local function getEquippedTool()
+	for _, child in ipairs(Character:GetChildren()) do
+		if child:IsA("Tool") then
+			return child
+		end
+	end
+	return nil
+end
+
+-- Gets the desired tool animation name from a tool's StringValue
+local function getToolAnimName(tool)
+	local animNameValue = tool:FindFirstChild("toolanim")
+	if animNameValue and animNameValue:IsA("StringValue") then
+		local name = animNameValue.Value
+		animNameValue.Parent = nil -- Original script removed it after reading
+		return name
+	end
+	return nil
+end
+
+-- Updates the tool animation based on the current tool state
+local function animateTool()
+	if currentToolState == STATE_TOOL_NONE then
+		playToolAnimation(STATE_TOOL_NONE, TOOL_TRANSITION_TIME)
+	elseif currentToolState == STATE_TOOL_SLASH then
+		playToolAnimation(STATE_TOOL_SLASH, 0) -- No fade for attacks
+	elseif currentToolState == STATE_TOOL_LUNGE then
+		playToolAnimation(STATE_TOOL_LUNGE, 0) -- No fade for attacks
+	else
+		-- If state is unknown, default to none
+		playToolAnimation(STATE_TOOL_NONE, TOOL_TRANSITION_TIME)
+	end
+end
+
+-- Stops all currently playing swim angle animations
+local function stopSwimAngleAnimations()
+	for _, track in ipairs(swimAngleAnimTracks) do
+		if track then
+			track:Stop(0) -- Stop immediately
+		end
+	end
+end
+
+-- Updates which swim angle animation is playing based on movement direction
+local function updateSwimDirection()
+	stopSwimAngleAnimations() -- Stop any currently playing angle anim
+
+	if not isSwimmingEnabled then
+		return
+	end
+
+	local moveDir = Humanoid.MoveDirection
+	local swimVelY = SwimVelocity.Velocity.Y -- Assumes SwimVel is a BodyVelocity or similar
+	local targetAngleIndex = 0 -- 0 means no specific angle anim
+
+	if moveDir.Magnitude < 0.01 then -- Approximately standing still horizontally
+		if swimVelY < -0.1 then
+			targetAngleIndex = 1 -- Moving Down (-90 deg)
+		elseif swimVelY > 0.1 then
+			targetAngleIndex = 5 -- Moving Up (+90 deg)
+		else
+			targetAngleIndex = 3 -- Moving Straight (0 deg) - Or idle swim? Handled by main anim state.
+		end
+	else -- Moving horizontally
+		targetAngleIndex = 3 -- Default horizontal
+		if swimVelY < -0.1 then
+			targetAngleIndex = 2 -- Horizontal Down (-45 deg)
+		elseif swimVelY > 0.1 then
+			targetAngleIndex = 4 -- Horizontal Up (+45 deg)
+		end
+	end
+
+	if targetAngleIndex > 0 and swimAngleAnimTracks[targetAngleIndex] then
+		-- Ensure looped is potentially set if needed, though original didn't explicitly
+		swimAngleAnimTracks[targetAngleIndex]:Play(0)
+	end
+end
+
+-- Moves limbs to a sitting pose (R6 specific)
+local function moveLimbsToSitPose()
+	-- These might need adjustment based on actual Motor6D C0/C1 setup
+	RightShoulder.MaxVelocity = 0.15
+	LeftShoulder.MaxVelocity = 0.15
+	RightShoulder:SetDesiredAngle(SIT_SHOULDER_ANGLE)
+	LeftShoulder:SetDesiredAngle(-SIT_SHOULDER_ANGLE) -- Opposite angle for left
+	RightHip:SetDesiredAngle(SIT_HIP_ANGLE)
+	LeftHip:SetDesiredAngle(-SIT_HIP_ANGLE) -- Opposite angle for left
+end
+
+-- Main update loop, called by RunService.Stepped
+local function onStepped(currentTime, deltaTime)
+	-- Update timers
+	if jumpStateTimer > 0 then
+		jumpStateTimer -= deltaTime
+	end
+	if toolActiveTimer > 0 then
+		toolActiveTimer -= deltaTime
+	else
+		currentToolState = STATE_TOOL_NONE -- Reset tool state if timer runs out
+	end
+
+	-- Main animation state logic
+	if currentHumanoidState == HSTATE_FREEFALL and jumpStateTimer <= 0 then
+		if isSwimmingEnabled then
+			-- Play swim animations based on movement
+			if Humanoid.MoveDirection.Magnitude < 0.01 and math.abs(SwimVelocity.Velocity.Y) < 0.1 then
+				playAnimation(STATE_SWIM_IDLE, SWIM_TRANSITION_TIME)
+			else
+				playAnimation(STATE_SWIM, SWIM_TRANSITION_TIME)
+				updateSwimDirection() -- Keep angle updated while swimming actively
+			end
+		elseif currentMainAnimName == STATE_AIRDIVE then
+			-- Keep playing airdive if it's the current animation
+		else
+			playAnimation(STATE_FALL, FALL_TRANSITION_TIME)
+		end
+	elseif currentHumanoidState == HSTATE_SEATED then
+		playAnimation(STATE_SIT, SIT_TRANSITION_TIME)
+		-- moveLimbsToSitPose() -- Original code had this, but sit animation usually handles it. Re-enable if needed.
+	elseif currentHumanoidState == HSTATE_RUNNING then
+		-- Check if the current animation is the walk/run animation
+		local isWalkAnimPlaying = false
+		if currentMainAnimInstance then
+			local walkAnim = selectWeightedAnimation(STATE_WALK) -- Get the walk animation instance
+			if walkAnim and currentMainAnimInstance == walkAnim then
+				isWalkAnimPlaying = true
+			end
+		end
+
+		-- Adjust speed based on current animation
+		local speedRatio = isWalkAnimPlaying and RUN_SPEED_RATIO or WALK_SPEED_RATIO
+		setMainAnimationSpeed(currentMoveSpeed / speedRatio)
+		playAnimation(STATE_WALK, IDLE_TRANSITION_TIME) -- Ensure walk animation is playing
+
+	elseif currentHumanoidState == HSTATE_STANDING then
+		if currentMoveSpeed <= 5 then -- Threshold from original code (onRunning)
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+			setMainAnimationSpeed(DEFAULT_ANIM_SPEED) -- Reset speed when idle
+		else
+			-- If standing but moving fast, switch to running logic (handled above implicitly by state change)
+		end
+
+	elseif currentHumanoidState == HSTATE_DEAD
+		or currentHumanoidState == HSTATE_GETTING_UP
+		or currentHumanoidState == HSTATE_FALLING_DOWN
+		or currentHumanoidState == HSTATE_PLATFORM_STANDING
+	then
+		-- Stop custom animations for these states, let default Roblox handler take over
+		stopMainAnimation(IDLE_TRANSITION_TIME)
+		-- Original code also manually moved limbs here, likely unnecessary
+	end
+
+	-- Tool animation logic
+	local equippedTool = getEquippedTool()
+	if equippedTool and equippedTool:FindFirstChild("Handle") then
+		local toolAnimName = getToolAnimName(equippedTool) -- This consumes the signal
+		if toolAnimName then
+			currentToolState = toolAnimName -- Update state based on signal
+			toolActiveTimer = TOOL_ACTIVE_DURATION -- Start/reset timer
+		end
+
+		if toolActiveTimer <= 0 then -- If timer ran out, reset state
+			currentToolState = STATE_TOOL_NONE
+		end
+		animateTool() -- Play animation based on currentToolState
+	else
+		-- No tool equipped
+		if currentToolAnimName ~= "" then -- Check if a tool anim was playing
+			stopToolAnimation(TOOL_TRANSITION_TIME)
+			currentToolState = STATE_TOOL_NONE
+			toolActiveTimer = 0
+		end
+	end
+end
+
+-- Humanoid State Change Handlers
+Humanoid.StateChanged:Connect(function(oldState, newState)
+	-- Update currentHumanoidState based on the Enum
+	-- This mapping might need adjustments based on exact desired behavior
+	if newState == Enum.HumanoidStateType.Running then
+		currentHumanoidState = HSTATE_RUNNING
+	elseif newState == Enum.HumanoidStateType.Jumping then
+		currentHumanoidState = HSTATE_JUMPING
+		if not isSwimmingEnabled then
+			playAnimation(STATE_JUMP, JUMP_TRANSITION_TIME)
+			jumpStateTimer = JUMP_STATE_DURATION -- Start timer for jump->fall transition
+			-- Fire buddy jump event if needed
+			local buddy = Character:FindFirstChild("Buddy")
+			if buddy and buddy:FindFirstChild("Follow") and buddy.Follow:FindFirstChild("Jump") then
+				buddy.Follow.Jump:FireServer()
+			end
+		end
+	elseif newState == Enum.HumanoidStateType.Climbing then
+		currentHumanoidState = HSTATE_CLIMBING
+		playAnimation(STATE_CLIMB, IDLE_TRANSITION_TIME)
+		-- Speed adjustment is now based on Humanoid.MoveDirection while climbing
+		local climbSpeed = Humanoid.MoveDirection.Y * Humanoid.WalkSpeed -- Estimate vertical speed
+		setMainAnimationSpeed(climbSpeed / CLIMB_SPEED_RATIO)
+	elseif newState == Enum.HumanoidStateType.GettingUp then
+		currentHumanoidState = HSTATE_GETTING_UP
+	elseif newState == Enum.HumanoidStateType.Freefall then
+		currentHumanoidState = HSTATE_FREEFALL
+		-- Animation logic handled in onStepped based on swimming/airdiving/falling
+	elseif newState == Enum.HumanoidStateType.FallingDown then
+		currentHumanoidState = HSTATE_FALLING_DOWN
+	elseif newState == Enum.HumanoidStateType.Seated then
+		currentHumanoidState = HSTATE_SEATED
+	elseif newState == Enum.HumanoidStateType.PlatformStanding then
+		currentHumanoidState = HSTATE_PLATFORM_STANDING
+	elseif newState == Enum.HumanoidStateType.Swimming then
+		-- Original script mapped swimming speed to Running/Standing state,
+		-- we'll keep this logic but use the dedicated isSwimmingEnabled flag
+		if Humanoid.MoveDirection.Magnitude > 0.1 then -- Check if actively swimming
+			currentHumanoidState = HSTATE_RUNNING -- Treat active swimming like running for animation purposes
+		else
+			currentHumanoidState = HSTATE_STANDING -- Treat idle swimming like standing
+		end
+		-- Note: Actual swim animations (swim/swimidle) are triggered in onStepped when Freefall + isSwimmingEnabled
+	elseif newState == Enum.HumanoidStateType.Physics then
+		currentHumanoidState = HSTATE_STANDING -- Ragdolled, treat as standing for anim reset
+	elseif newState == Enum.HumanoidStateType.Dead then
+		currentHumanoidState = HSTATE_DEAD
+		stopMainAnimation(0) -- Stop animations immediately on death
+		stopToolAnimation(0)
+		stopSwimAngleAnimations()
+	else -- Default case, likely Landed or None
+		currentHumanoidState = HSTATE_STANDING
+		-- If landing from a jump/fall, ensure idle animation plays
+		if oldState == Enum.HumanoidStateType.Freefall or oldState == Enum.HumanoidStateType.Jumping then
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+		end
+	end
+end)
+
+Humanoid.Running:Connect(function(speed)
+	currentMoveSpeed = speed
+	-- State change logic now primarily handled by StateChanged and onStepped
+end)
+
+Humanoid.Died:Connect(function()
+	currentHumanoidState = HSTATE_DEAD
+	stopMainAnimation(0)
+	stopToolAnimation(0)
+	stopSwimAngleAnimations()
+	-- Potentially disconnect RunService connection here if script shouldn't run after death
+end)
+
+-- Emote and Chat Handling
+function performEmote(emoteName, triggeredByChat)
+	if isAnimationLocked then return end
+	if currentHumanoidState ~= HSTATE_STANDING then return end -- Only emote when standing
+
+	if not emoteName or not activeAnimationTracks[emoteName] then
+		warn("Attempted to perform unknown emote:", emoteName)
+		return
+	end
+
+	-- Cooldown check specifically for the custom emote triggered by event/keybind
+	if not triggeredByChat and emoteName == STATE_CUSTOM_EMOTE then
+		if time() < lastEmoteTime + EMOTE_COOLDOWN_DURATION then
+			return -- Cooldown active
+		end
+		lastEmoteTime = time()
+		-- Play sound if configured
+		local emoteSound = Character.Head:FindFirstChild("Emote")
+		if emoteSound and emoteSound:IsA("Sound") and emoteSound.SoundId ~= "" then
+			emoteSound:Play()
+		end
+	end
+
+	playAnimation(emoteName, EMOTE_TRANSITION_TIME)
+end
+
+LocalPlayer.Chatted:Connect(function(message)
+	local messageLower = message:lower()
+	local emoteName = nil
+
+	if messageLower == "/e dance" then
+		emoteName = danceEmotes[math.random(1, #danceEmotes)]
+	elseif messageLower:sub(1, 3) == "/e " then
+		emoteName = messageLower:sub(4)
+	elseif messageLower:sub(1, 7) == "/emote " then
+		emoteName = messageLower:sub(8)
+	end
+
+	if emoteName and emoteLooping[emoteName] ~= nil then -- Check if it's a valid emote defined in our looping table
+		performEmote(emoteName, true) -- Pass true for triggeredByChat
+	end
+end)
+
+-- External Event Connections
+
+--[[-- Maybe Anticheat Related
+ObfuscatedRemoteFunction.OnClientInvoke = function(locked)
+	isAnimationLocked = locked
+	if isAnimationLocked then
+		-- If locked, force idle animation
+		playAnimation(STATE_IDLE, 0)
+	end
+	-- Return humanoid and current state enum
+	return Humanoid, Humanoid:GetState()
+end
+]]
+ToggleSwimEvent.Event:Connect(function(enabled)
+	if isSwimmingEnabled ~= enabled then
+		isSwimmingEnabled = enabled
+		if not isSwimmingEnabled then
+			stopSwimAngleAnimations() -- Stop angle anims if swimming is disabled
+		else
+			updateSwimDirection() -- Update immediately if swimming is enabled
+		end
+		-- Re-evaluate main animation state in the next step
+	end
+end)
+
+AirDivingEvent.Event:Connect(function()
+	playAnimation(STATE_AIRDIVE, 0) -- Play immediately
+end)
+
+SlidingEvent.Event:Connect(function(enabled)
+	getgenv().Animation.isSliding = enabled
+	if getgenv().Animation.isSliding then
+		playAnimation(STATE_SLIDE, SLIDE_TRANSITION_TIME)
+	else
+		-- If the slide animation was playing, transition back to idle smoothly
+		if currentMainAnimName == STATE_SLIDE then
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+			setMainAnimationSpeed(DEFAULT_ANIM_SPEED) -- Reset speed
+		end
+	end
+end)
+
+WalljumpEvent.Event:Connect(function(enabled)
+	isWallHanging = enabled
+	if isWallHanging then
+		playAnimation(STATE_WALLHANG, 0) -- Play immediately
+	else
+		if currentMainAnimName == STATE_WALLHANG then
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+			setMainAnimationSpeed(DEFAULT_ANIM_SPEED)
+		end
+	end
+end)
+
+SwingingEvent.Event:Connect(function(enabled)
+	isSwinging = enabled
+	if isSwinging then
+		playAnimation(STATE_SWING, 0) -- Play immediately
+	else
+		if currentMainAnimName == STATE_SWING then
+			playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME)
+			setMainAnimationSpeed(DEFAULT_ANIM_SPEED)
+		end
+	end
+end)
+
+-- Updates the Custom Emote animation ID
+UpdateEmoteEvent.OnClientEvent:Connect(function(emoteId)
+	local newId = emoteId or DEFAULT_EMOTE_ID
+	local animData = defaultAnimationData[STATE_CUSTOM_EMOTE]
+	if animData and animData[1] then
+		animData[1].id = string.format(ANIMATION_ASSET_FORMAT, tostring(newId))
+		-- Reconfigure the set to use the new default ID if no overriding Animation instance exists
+		configureAnimationSet(STATE_CUSTOM_EMOTE, animData)
+	end
+end)
+
+-- Allows overriding default animations via attributes on an Instance (e.g., Character)
+UpdateAnimationsEvent.OnClientEvent:Connect(function(attributeProvider)
+	if not attributeProvider then return end -- Need something to get attributes from
+
+	for animName, defaultSet in pairs(defaultAnimationData) do
+		local attributeValue = attributeProvider:GetAttribute(animName)
+		local newSetData = defaultSet -- Start with the original defaults
+
+		if attributeValue then
+			-- If an attribute exists, create a new default set using only that ID
+			newSetData = {
+				{ id = string.format(ANIMATION_ASSET_FORMAT, tostring(attributeValue)), weight = 10 }
+			}
+		end
+		-- Reconfigure using the (potentially new) default set.
+		-- This will still prefer child Animation instances if they exist.
+		configureAnimationSet(animName, newSetData)
+	end
+end)
+
+EmoteFireEvent.Event:Connect(function()
+	performEmote(STATE_CUSTOM_EMOTE, false) -- Pass false for triggeredByChat
+end)
+
+-- Update swim direction based on velocity/movedirection changes
+Humanoid.Changed:Connect(function(property)
+	if property == "MoveDirection" then
+		if isSwimmingEnabled then
+			updateSwimDirection()
+		end
+	end
+end)
+SwimVelocity.Changed:Connect(function(property)
+	if property == "Velocity" then
+		if isSwimmingEnabled then
+			updateSwimDirection()
+		end
+	end
+end)
+
+
+-- Initialization
+
+-- Load all default animation sets
+for animName, dataSet in pairs(defaultAnimationData) do
+	configureAnimationSet(animName, dataSet)
+end
+
+-- Listen for child Animation instances being added/removed directly under AnimateScript
+AnimateScript.ChildAdded:Connect(function(child)
+	if child:IsA("Animation") or child:IsA("Folder") then -- Check for Folders too
+		local animName = child.Name
+		if defaultAnimationData[animName] then
+			configureAnimationSet(animName, defaultAnimationData[animName])
+		end
+	end
+end)
+AnimateScript.ChildRemoved:Connect(function(child)
+	if child:IsA("Animation") or child:IsA("Folder") then -- Check for Folders too
+		local animName = child.Name
+		if defaultAnimationData[animName] then
+			-- When removed, revert to the default set
+			configureAnimationSet(animName, defaultAnimationData[animName])
+		end
+	end
+end)
+
+
+-- Load Swim Angle Animations
+local swimAngleIDs = {
+	AnimIDs.SwimAngle90.Value,
+	AnimIDs["SwimAngle-45"].Value, -- Order seems different from original, check indices in updateSwimDirection
+	AnimIDs.SwimAngle0.Value,
+	AnimIDs["SwimAngle45"].Value,
+	AnimIDs["SwimAngle-90"].Value,
+}
+for i, angleID in ipairs(swimAngleIDs) do
+	local anim = Instance.new("Animation")
+	anim.Name = "SwimAngle" .. i -- Use index for name consistency
+	anim.AnimationId = string.format(ANIMATION_ASSET_FORMAT, angleID)
+	-- Don't parent these temporary instances
+	swimAngleAnimations[i] = anim
+	local success, track = pcall(Humanoid.LoadAnimation, Humanoid, anim)
+	if success and track then
+		swimAngleAnimTracks[i] = track
+		-- Ensure looping if needed, original code didn't specify
+		-- track.Looped = true
+	else
+		warn("Failed to load swim angle animation:", angleID, track)
+	end
+end
+
+
+-- Start the animation loop
+playAnimation(STATE_IDLE, IDLE_TRANSITION_TIME) -- Start with idle
+playToolAnimation(STATE_TOOL_NONE, 0) -- Start with tool none
+
+-- Connect the main update function after initialization
+local stepConnection
+stepConnection = RunService.Stepped:Connect(onStepped)
+
+-- Optional: Disconnect Stepped when the character is destroyed
+Character.Destroying:Connect(function()
+	if stepConnection then
+		stepConnection:Disconnect()
+	end
+	-- Cleanup other connections maybe? Depends on script lifecycle needs.
+	disconnectTableConnections(activeAnimationTracks) -- Example cleanup
+end)
+
+
+--[[
+-- Original main loop logic (replaced by RunService.Stepped)
+while Character.Parent ~= nil do
+    local _, deltaTime = task.wait(0.1) -- Using task.wait, but Stepped is better
+    move(deltaTime) -- Original function name was move
+end
+]]
+
+print("FE2 Animate Script Initialized (Improved Version)")
