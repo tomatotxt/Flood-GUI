@@ -55,13 +55,17 @@ else
     CLMAIN.newAlert("TAS Player ready for next map.", Color3.new(0,1,.5))
 end
 
+local CleanedUp = false
 local DeathConnect
 local function Cleanup()
+    if CleanedUp == true then error("Cleaned.") end
+    CleanedUp = true
     DeathConnect:Disconnect()
     print("Cleaning Up..")
     CLMAIN.newAlert("Resetting..", Color3.new(0, 1, 1))
-    if LP.Character and LP.Character.Head then
-        LP.Character.Head:Destroy()
+    local Head = LP.Character:FindFirstChild("Head")
+    if LP.Character and Head then
+        Head:Destroy()
     end
     LP.CharacterAdded:wait()
     task.wait(1)
@@ -70,7 +74,7 @@ local function Cleanup()
         RootPart.Velocity = Vector3.new(0, 1, 1000)
         task.wait()
     end
-    return
+    error("Cleaned Up!")
 end
 DeathConnect = LP.Character.Humanoid.Died:Connect(Cleanup)
 
