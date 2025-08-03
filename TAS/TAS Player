@@ -75,7 +75,9 @@ end
 DeathConnect = LP.Character.Humanoid.Died:Connect(Cleanup)
 
 local Animate = getsenv(LP.Character.Animate)
-local Map = Multi:WaitForChild('NewMap', 9e6)
+Multi:WaitForChild('NewMap', 9e6)
+local Map = Multi:WaitForChild('Map', 9e6)
+print("Map")
 local realMapName = Map:WaitForChild('Settings'):GetAttribute("MapName")
 local mapName = game:GetService("HttpService"):UrlEncode(realMapName)
 print(realMapName)
@@ -88,6 +90,7 @@ if success and #path > 50 then
     print("TAS FILE IS REAL")
 else
     print("TAS FILE BROKEN")
+    print(path)
     Cleanup()
     -- Cleanup and Reset
     -- Respawn
