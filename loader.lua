@@ -1,4 +1,4 @@
-local Branch = ...
+local Branch = ... or "main"
 local FloodGUIRepo = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/"..Branch
 
 if not isfolder("Flood-GUI") then
@@ -10,7 +10,7 @@ end
 if not isfolder("Flood-GUI/TAS FILES") then
     makefolder("Flood-GUI/TAS FILES")
 end
-function import(webpath)
+function import(webpath)a
     local filepath = "Flood-GUI"..webpath
     local fullurl = (FloodGUIRepo..webpath):gsub(" ", "%%20")
     writefile(filepath, game:HttpGet(fullurl))
