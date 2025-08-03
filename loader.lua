@@ -10,7 +10,7 @@ end
 if not isfolder("Flood-GUI/TAS FILES") then
     makefolder("Flood-GUI/TAS FILES")
 end
-function import(webpath)a
+function import(webpath)
     local filepath = "Flood-GUI"..webpath
     local fullurl = (FloodGUIRepo..webpath):gsub(" ", "%%20")
     writefile(filepath, game:HttpGet(fullurl))
