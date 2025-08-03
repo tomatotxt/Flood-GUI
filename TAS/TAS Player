@@ -83,13 +83,13 @@ local mapName = game:GetService("HttpService"):UrlEncode(realMapName)
 print(realMapName)
 local success, path = 
     pcall(function()
-        return readfile("Flood-GUI/TAS FILES/" .. realMapName .. ".json")
+        return game:HttpGet("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/main/TAS%20FILES/".. mapName .. ".json")
     end)
 
 if success and #path > 50 then
-    print("TAS FILE IS REAL")
+    Alert("TAS FILE IS REAL")
 else
-    print("TAS FILE BROKEN")
+    Alert("TAS FILE BROKEN")
     print(path)
     Cleanup()
     -- Cleanup and Reset
@@ -218,6 +218,10 @@ walljumpfix2 = LP.Character.HumanoidRootPart.TouchEnded:Connect(function(Thing)
 end)
 
 local function activateAnimation(CurrentAnimation)
+    local CurrentAnimation = CurrentAnimation
+    if LP.Character.Humanoid:GetState() == Enum.HumanoidStateType.Physics then
+        CurrentAnimation[1] = "swing"
+    end
     if CurrentAnimation and CurrentAnimation[1] and CurrentAnimation[2] and LP.Character and LP.Character.Humanoid then
         PlayAnim(CurrentAnimation[1],CurrentAnimation[2], LP.Character.Humanoid)
         if CurrentAnimation[1] == "walk" then
@@ -278,15 +282,8 @@ Loop = RS.PostSimulation:Connect(function(DeltaTime) --Heartbeat
             OldFrame = i
             local CCFrame = CurrentInfo.CCFrame
             local CCameraCFrame = CurrentInfo.CCameraCFrame
-            if Mirrored == true then
-                RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], -CCFrame[3]) * AngC(-3.1415927410125732, CCFrame[5], -3.1415927410125732) + Offset
-                --workspace.CurrentCamera.CFrame = NewC(-CCameraCFrame[1], -CCameraCFrame[2], -CCameraCFrame[3]) * AngC(3.1415927410125732, CCameraCFrame[5], 3.1415927410125732) + Offset
-            elseif Mirrored == true and Legit then
-                
-            else
-                RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], CCFrame[3]) * AngC(CCFrame[4], CCFrame[5], CCFrame[6]) + Offset
-                --CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
-            end
+            RootPart.CFrame = NewC(CCFrame[1], CCFrame[2], CCFrame[3]) * AngC(CCFrame[4], CCFrame[5], CCFrame[6]) + Offset
+            CurrentCamera.CFrame = NewC(CCameraCFrame[1], CCameraCFrame[2], CCameraCFrame[3]) * AngC(CCameraCFrame[4], CCameraCFrame[5], CCameraCFrame[6]) + Offset
             activateAnimation(CurrentInfo.AAnimation)
         end
     end
