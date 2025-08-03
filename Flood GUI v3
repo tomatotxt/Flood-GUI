@@ -16,7 +16,7 @@ local CoreGui = game:GetService("CoreGui") -- Added for potential future use or 
 -- // Constants & Configuration //
 local CONFIG = {
     SCRIPT_VERSION_NAME = "Flood GUI v3",
-    LATEST_BUILD = 63.2,
+    LATEST_BUILD = 63.21,
     DEFAULT_BRANCH = "main",
     UI_LIBRARY_URL = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
     TAS_BASE_URL = "https://raw.githubusercontent.com/tomatotxt/Testing/main/Flood-GUI-main/TAS%20FILES/",
