@@ -248,10 +248,12 @@ if Legit then
     RootPart.RootJoint.Enabled = false
 end
 
-Loop = RS.PostSimulation:Connect(function(DeltaTime) --Heartbeat
+Loop = RS.Heartbeat:Connect(function(DeltaTime) --Heartbeat
+    -- God Mode may cause problems with other health based features.
+    LP.Character.Humanoid.Health = 99999
     LP.Character.Humanoid.Jump = true
     local NewFrame = #TAS
-    local Divider = OldFrame + 30
+    local Divider = OldFrame + 60
     if Divider < #TAS then
         NewFrame = Divider
     end
