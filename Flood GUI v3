@@ -463,9 +463,10 @@ local function initializeUI()
     end)
 
     -- == TAS Tab ==
-    secTAS:NewButton("Create-TAS [WIP]", "Create a TAS recording.", function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/TAS%20Record%20Voiz"))()
+    secTAS:NewButton("Create TAS", "Create a TAS recording.", function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/Beta-Creator"))()
     end)
+
 
     secTAS:NewKeybind("Toggle Swim [TAS]", "For TAS recording. Simulates being in water.", CONFIG.SWIM_TOGGLE_KEY, function()
          State.SwimEnabled = not State.SwimEnabled
@@ -473,16 +474,8 @@ local function initializeUI()
          -- Logic is handled by the __index hook (if available and enabled)
     end)
 
-    secTAS:NewToggle("Auto-Leave", "Automatically leaves the game if another player joins.", function(enabled)
-        State.AutoLeaveEnabled = enabled
-        showAlert("Auto-Leave " .. (enabled and "Enabled" or "Disabled"), enabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
-        -- Logic handled in Players.PlayerAdded
-    end)
-    State.AutoLeaveEnabled = false -- Set Initial Value
-     secTAS:NewButton("Rejoin Server", "Teleports you to a new server of the same game.", function()
-        showAlert("Attempting to rejoin...", CONFIG.ALERT_COLORS.INFO)
-        pcall(TeleportService.Teleport, TeleportService, game.PlaceId, LocalPlayer)
-        -- Consider adding error handling/feedback if Teleport fails
+    secTAS:NewButton("Load Infinite Yield", "Loads Infinite Yield Admin Script", function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/edgeiy/infiniteyield/master/source"))()
     end)
 
     -- == Other Tab ==
@@ -496,15 +489,18 @@ local function initializeUI()
         end
     end)
 
-    secOther:NewLabel("Discord Invite")
-    secOther:NewButton("Copy Support Server Invite", "Copies the Discord invite link to your clipboard.", function()
-        if setclipboard then
-            pcall(setclipboard, CONFIG.DISCORD_INVITE)
-            showAlert("Discord invite copied to clipboard!", CONFIG.ALERT_COLORS.SUCCESS)
-        else
-            showAlert("Clipboard access not supported by your exploit.", CONFIG.ALERT_COLORS.WARNING)
-        end
+    secOther:NewToggle("Auto-Leave", "Automatically leaves the game if another player joins.", function(enabled)
+        State.AutoLeaveEnabled = enabled
+        showAlert("Auto-Leave " .. (enabled and "Enabled" or "Disabled"), enabled and CONFIG.ALERT_COLORS.INFO or CONFIG.ALERT_COLORS.INFO)
+        -- Logic handled in Players.PlayerAdded
     end)
+    State.AutoLeaveEnabled = false -- Set Initial Value
+    secOther:NewButton("Rejoin Server", "Teleports you to a new server of the same game.", function()
+        showAlert("Attempting to rejoin...", CONFIG.ALERT_COLORS.INFO)
+        pcall(TeleportService.Teleport, TeleportService, game.PlaceId, LocalPlayer)
+        -- Consider adding error handling/feedback if Teleport fails
+    end)
+
 
     -- == Credits Tab ==
     secCredits:NewLabel("TAS Record/Playback: Voiz#5668")
@@ -512,6 +508,15 @@ local function initializeUI()
     secCredits:NewLabel("Stat Tracker Concept & Misc: Moz") -- Added note about concept if not implemented
     secCredits:NewLabel("UI Library: xHeptc (Kavo)")
     secCredits:NewLabel("Refactoring & Improvements: AI")
+    secCredits:NewLabel("Discord Invite")
+    secCredits:NewButton("Copy Support Server Invite", "Copies the Discord invite link to your clipboard.", function()
+        if setclipboard then
+            pcall(setclipboard, CONFIG.DISCORD_INVITE)
+            showAlert("Discord invite copied to clipboard!", CONFIG.ALERT_COLORS.SUCCESS)
+        else
+            showAlert("Clipboard access not supported by your exploit.", CONFIG.ALERT_COLORS.WARNING)
+        end
+    end)
 
     -- == Stat Tracker Section (Optional - Uncomment and integrate if needed) ==
     --[[
