@@ -464,7 +464,7 @@ local function initializeUI()
 
     -- == TAS Tab ==
     secTAS:NewButton("Create TAS", "Create a TAS recording.", function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/Swelllow/Flood-GUI/refs/heads/testing/TAS/Beta-Creator"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/main/TAS/Beta-Creator"))()
     end)
 
 
