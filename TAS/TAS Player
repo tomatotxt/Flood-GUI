@@ -108,7 +108,7 @@ if HighlightPath then
     CLMAIN.newAlert("Map cannot be mirrored.", Color3.fromRGB(255, 100, 0))
     Mirrored = false
 else
-    if SkipMirroredMaps[mapName] then
+    if Mirrored == true and SkipMirroredMaps[mapName] then
         CLMAIN.newAlert('Map cannot be mirrored.', Color3.fromRGB(255, 100, 0))
         Cleanup()
     else
