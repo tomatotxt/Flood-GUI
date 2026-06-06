@@ -1,5 +1,3 @@
---- START OF FILE Paste June 06, 2026 - Updated ---
-
 --[[
     FE2 TAS Creator (Ultimate Edition)
     - INTACT: Smart .Changed Recorder, Map Autofarm, Button Sync, Zipline Fix.
