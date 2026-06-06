@@ -1,303 +1,156 @@
 --- START OF FILE uiapi.luau ---
-
 --[[ 
-    FE2 TAS UI Library (Auto-Layout Edition)
-    - Uses UIListLayout to automatically position the Keybind menu
-    - Zero overlap, zero manual pixel measuring
-    - Auto GameGui Toggle included
-    - *MODIFIED*: Map Name integrated into lower panel, Status Badge moved up.
+    FE2 TAS UI Library (Mobile-Ready & Tabbed Edition)
+    - Fully interactable buttons for every action (Mobile Support)
+    - File Explorer Tab (Save, Load, Refresh List)
+    - Configs Tab (Debug, Smoothing, Tracing, Predictor)
 ]]
 
 local TAS_UI = {}
 local TweenService = game:GetService("TweenService")
 
--- // Styling Constants //
 local THEME = {
-    Background = Color3.fromRGB(25, 25, 30),
+    Bg = Color3.fromRGB(20, 20, 25),
+    TabBg = Color3.fromRGB(30, 30, 35),
     Stroke = Color3.fromRGB(60, 60, 70),
     TextMain = Color3.fromRGB(240, 240, 240),
-    TextDim = Color3.fromRGB(180, 180, 180),
-    Accent = Color3.fromRGB(85, 170, 255),
-    Alert = Color3.fromRGB(255, 200, 80),
+    TextDim = Color3.fromRGB(150, 150, 150),
+    Accent = Color3.fromRGB(0, 170, 255),
+    Alert = Color3.fromRGB(255, 170, 0),
+    Button = Color3.fromRGB(45, 45, 55),
+    ButtonHover = Color3.fromRGB(65, 65, 75)
 }
+
+local function CreateUIElement(className, props)
+    local el = Instance.new(className)
+    for k, v in pairs(props) do el[k] = v end
+    return el
+end
 
 function TAS_UI.Create()
     local CoreGui = game:GetService("CoreGui")
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5)
+    for _, v in pairs(CoreGui:GetChildren()) do if v.Name == "FE2_TAS_HUB" then v:Destroy() end end
 
-    -- // Clean up old UIs first //
-    for _, v in pairs(CoreGui:GetChildren()) do
-        if v.Name == "TAS_HUD" then v:Destroy() end
-    end
-
-    -- // GameGui & Alerts Handling //
-    local GameGui = PlayerGui and PlayerGui:WaitForChild("GameGui", 5)
-    local LocatorGui = PlayerGui and PlayerGui:WaitForChild("LocatorGui", 5)
-    local AlertsFrame = GameGui and GameGui:FindFirstChild("Alerts")
-
-    -- Move Alerts to LocatorGui (which stays enabled) so we can see them
-    if AlertsFrame and LocatorGui then
-        AlertsFrame.Parent = LocatorGui
-    end
-
-    -- Disable the main GameGui to hide clutter
-    if GameGui then 
-        GameGui.Enabled = false 
-    end
-
-    -- // 1. ScreenGui //
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "TAS_HUD"
-    ScreenGui.Parent = CoreGui
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.ResetOnSpawn = false
-
-    -- // Cleanup Logic //
-    ScreenGui.Destroying:Connect(function()
-        -- Restore Alerts back to GameGui
-        if AlertsFrame and GameGui then
-            AlertsFrame.Parent = GameGui
-        end
-        -- Re-enable GameGui
-        if GameGui then 
-            GameGui.Enabled = true 
-        end
-    end)
-
-    -- // 2. The Magic Container (Holds both menus) //
-    local Container = Instance.new("Frame")
-    Container.Name = "LayoutContainer"
-    Container.Parent = ScreenGui
-    Container.BackgroundTransparency = 1
-    -- Centered at the bottom of the screen
-    Container.AnchorPoint = Vector2.new(0.5, 1) 
-    Container.Position = UDim2.new(0.5, 0, 0.95, 0)
-    Container.Size = UDim2.new(0, 0, 0, 0) -- Starts at 0
-    -- THIS makes the container expand to fit both menus automatically
-    Container.AutomaticSize = Enum.AutomaticSize.XY 
-
-    -- // 3. The Layout Instance //
-    local Layout = Instance.new("UIListLayout")
-    Layout.Parent = Container
-    Layout.FillDirection = Enum.FillDirection.Horizontal -- Places items side-by-side
-    Layout.VerticalAlignment = Enum.VerticalAlignment.Bottom -- Aligns them to the bottom
-    Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center -- Keeps group centered
-    Layout.SortOrder = Enum.SortOrder.LayoutOrder
-    Layout.Padding = UDim.new(0, 15) -- 15px Gap between Main Menu and Keybinds
-
-    -- // 4. Stats Panel (Main Menu) //
-    local StatsPanel = Instance.new("Frame")
-    StatsPanel.Name = "StatsPanel"
-    StatsPanel.Parent = Container
-    StatsPanel.BackgroundColor3 = THEME.Background
-    StatsPanel.BackgroundTransparency = 0.15
-    StatsPanel.LayoutOrder = 1 -- Forces this to be on the LEFT
-    StatsPanel.Size = UDim2.new(0, 360, 0, 85)
+    local ScreenGui = CreateUIElement("ScreenGui", {Name = "FE2_TAS_HUB", Parent = CoreGui, ResetOnSpawn = false})
     
-    local PCorner = Instance.new("UICorner")
-    PCorner.CornerRadius = UDim.new(0, 12)
-    PCorner.Parent = StatsPanel
+    -- // MAIN DRAGGABLE FRAME //
+    local MainFrame = CreateUIElement("Frame", {
+        Parent = ScreenGui, Size = UDim2.new(0, 350, 0, 450), Position = UDim2.new(0.5, -175, 0.5, -225),
+        BackgroundColor3 = THEME.Bg, Active = true, Draggable = true, ClipsDescendants = true
+    })
+    CreateUIElement("UICorner", {Parent = MainFrame, CornerRadius = UDim.new(0, 8)})
+    CreateUIElement("UIStroke", {Parent = MainFrame, Color = THEME.Stroke, Thickness = 2})
+
+    -- // TOP BAR //
+    local TopBar = CreateUIElement("Frame", {Parent = MainFrame, Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = THEME.TabBg})
+    CreateUIElement("UICorner", {Parent = TopBar, CornerRadius = UDim.new(0, 8)})
+    local Title = CreateUIElement("TextLabel", {
+        Parent = TopBar, Size = UDim2.new(1, -10, 0.5, 0), Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1, Text = "FE2 TAS CREATOR", Font = Enum.Font.GothamBold,
+        TextColor3 = THEME.Accent, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left
+    })
+    local TimeText = CreateUIElement("TextLabel", {
+        Parent = TopBar, Size = UDim2.new(1, -10, 0.5, 0), Position = UDim2.new(0, 10, 0.5, 0),
+        BackgroundTransparency = 1, Text = "0:00.000", Font = Enum.Font.RobotoMono,
+        TextColor3 = THEME.TextMain, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left
+    })
+    local StatusText = CreateUIElement("TextLabel", {
+        Parent = TopBar, Size = UDim2.new(0.5, -10, 1, 0), Position = UDim2.new(0.5, 0, 0, 0),
+        BackgroundTransparency = 1, Text = "PAUSED", Font = Enum.Font.GothamBold,
+        TextColor3 = THEME.Alert, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Right
+    })
+
+    -- // TAB BUTTONS //
+    local TabContainer = CreateUIElement("Frame", {Parent = MainFrame, Size = UDim2.new(1, 0, 0, 30), Position = UDim2.new(0, 0, 0, 50), BackgroundTransparency = 1})
+    CreateUIElement("UIListLayout", {Parent = TabContainer, FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder})
     
-    local PStroke = Instance.new("UIStroke")
-    PStroke.Color = THEME.Stroke
-    PStroke.Thickness = 1.5
-    PStroke.Parent = StatsPanel
-
-    -- // 5. Keybind Window //
-    local KBFrame = Instance.new("Frame")
-    KBFrame.Name = "KeybindFrame"
-    KBFrame.Parent = Container
-    KBFrame.BackgroundColor3 = THEME.Background
-    KBFrame.BackgroundTransparency = 0.1
-    KBFrame.LayoutOrder = 2 -- Forces this to be on the RIGHT
-    KBFrame.Size = UDim2.new(0, 240, 0, 390) -- Increased height for extra keybind
-    KBFrame.Visible = false -- Hidden by default
-    KBFrame.ClipsDescendants = true
-
-    local KBFCorner = Instance.new("UICorner")
-    KBFCorner.CornerRadius = UDim.new(0, 10)
-    KBFCorner.Parent = KBFrame
-
-    local KBFStroke = Instance.new("UIStroke")
-    KBFStroke.Color = THEME.Accent
-    KBFStroke.Transparency = 0.5
-    KBFStroke.Thickness = 1
-    KBFStroke.Parent = KBFrame
-
-    -- // Stats Panel Contents //
-    local TimeText = Instance.new("TextLabel")
-    TimeText.Name = "TimeText"
-    TimeText.Parent = StatsPanel
-    TimeText.BackgroundTransparency = 1
-    TimeText.Position = UDim2.new(0.05, 0, 0.1, 0)
-    TimeText.Size = UDim2.new(0.5, 0, 0.5, 0)
-    TimeText.Font = Enum.Font.Highway
-    TimeText.Text = "0:00.000"
-    TimeText.TextColor3 = THEME.TextMain
-    TimeText.TextScaled = true
-    TimeText.TextXAlignment = Enum.TextXAlignment.Left
-
-    local function CreateInfoLabel(name, posY)
-        local L = Instance.new("TextLabel")
-        L.Parent = StatsPanel
-        L.BackgroundTransparency = 1
-        L.Position = UDim2.new(0.6, 0, posY, 0)
-        L.Size = UDim2.new(0.35, 0, 0.2, 0)
-        L.Font = Enum.Font.Highway
-        L.Text = name
-        L.TextColor3 = THEME.TextDim
-        L.TextScaled = true
-        L.TextXAlignment = Enum.TextXAlignment.Right
-        return L
+    local Tabs = {}
+    local Panels = {}
+    local function CreateTab(name, order)
+        local btn = CreateUIElement("TextButton", {
+            Parent = TabContainer, Size = UDim2.new(1/3, 0, 1, 0), LayoutOrder = order,
+            BackgroundColor3 = THEME.Button, Text = name, Font = Enum.Font.GothamBold, TextColor3 = THEME.TextDim, TextSize = 12
+        })
+        local panel = CreateUIElement("ScrollingFrame", {
+            Parent = MainFrame, Size = UDim2.new(1, -20, 1, -90), Position = UDim2.new(0, 10, 0, 85),
+            BackgroundTransparency = 1, Visible = false, ScrollBarThickness = 4, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y
+        })
+        CreateUIElement("UIListLayout", {Parent = panel, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
+        Tabs[name] = btn; Panels[name] = panel
+        
+        btn.Activated:Connect(function()
+            for k, p in pairs(Panels) do p.Visible = false; Tabs[k].BackgroundColor3 = THEME.Button; Tabs[k].TextColor3 = THEME.TextDim end
+            panel.Visible = true; btn.BackgroundColor3 = THEME.Accent; btn.TextColor3 = Color3.new(1,1,1)
+        end)
+        return panel
     end
 
-    local SavestatesCount = CreateInfoLabel("Savestates 0", 0.15)
-    local FrameCount = CreateInfoLabel("Frames 0", 0.38)
+    local CtrlPanel = CreateTab("Controls", 1)
+    local VisPanel = CreateTab("Config", 2)
+    local FilePanel = CreateTab("Files", 3)
+    Panels["Controls"].Visible = true; Tabs["Controls"].BackgroundColor3 = THEME.Accent; Tabs["Controls"].TextColor3 = Color3.new(1,1,1)
 
-    -- Toggle Button
-    local KeybindButton = Instance.new("TextButton")
-    KeybindButton.Parent = StatsPanel
-    KeybindButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-    KeybindButton.Position = UDim2.new(0.6, 0, 0.65, 0)
-    KeybindButton.Size = UDim2.new(0.35, 0, 0.25, 0)
-    KeybindButton.Font = Enum.Font.GothamBold
-    KeybindButton.Text = "Controls"
-    KeybindButton.TextColor3 = THEME.TextMain
-    KeybindButton.TextSize = 14
-    KeybindButton.AutoButtonColor = false
-
-    local KBCorner = Instance.new("UICorner")
-    KBCorner.CornerRadius = UDim.new(0, 6)
-    KBCorner.Parent = KeybindButton
-    
-    local KBStroke = Instance.new("UIStroke")
-    KBStroke.Color = THEME.Stroke
-    KBStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    KBStroke.Parent = KeybindButton
-
-    -- MOVED: Map Name is now in the lower panel (Replacing old Status Pos)
-    local MapEventInfo = Instance.new("TextLabel")
-    MapEventInfo.Parent = StatsPanel
-    MapEventInfo.BackgroundTransparency = 1
-    MapEventInfo.Position = UDim2.new(0.05, 0, 0.65, 0)
-    MapEventInfo.Size = UDim2.new(0.5, 0, 0.25, 0)
-    MapEventInfo.Font = Enum.Font.GothamBold
-    MapEventInfo.Text = "Map: Waiting..."
-    MapEventInfo.TextColor3 = THEME.Accent
-    MapEventInfo.TextScaled = true
-    MapEventInfo.TextXAlignment = Enum.TextXAlignment.Left
-
-    -- MOVED: Status Badge moved to top right corner of Time area
-    local StatusBadge = Instance.new("TextLabel")
-    StatusBadge.Parent = StatsPanel
-    StatusBadge.BackgroundTransparency = 1
-    StatusBadge.Position = UDim2.new(0.4, 0, 0.15, 0) -- Adjusted position
-    StatusBadge.Size = UDim2.new(0.15, 0, 0.15, 0)
-    StatusBadge.Font = Enum.Font.GothamMedium
-    StatusBadge.Text = "PAUSED"
-    StatusBadge.TextColor3 = THEME.Alert
-    StatusBadge.TextScaled = true
-    StatusBadge.TextXAlignment = Enum.TextXAlignment.Left
-
-    -- // Keybind List Logic //
-    local KBList = Instance.new("UIListLayout")
-    KBList.Parent = KBFrame
-    KBList.SortOrder = Enum.SortOrder.LayoutOrder
-    KBList.Padding = UDim.new(0, 4)
-    KBList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local KBPadding = Instance.new("UIPadding")
-    KBPadding.Parent = KBFrame
-    KBPadding.PaddingTop = UDim.new(0, 10)
-    KBPadding.PaddingBottom = UDim.new(0, 10)
-    KBPadding.PaddingLeft = UDim.new(0, 10)
-    KBPadding.PaddingRight = UDim.new(0, 10)
-
-    local function AddKeybindRow(keyText, actionText, order)
-        local Row = Instance.new("Frame")
-        Row.BackgroundTransparency = 1
-        Row.Size = UDim2.new(1, 0, 0, 20)
-        Row.LayoutOrder = order
-        Row.Parent = KBFrame
-
-        local Key = Instance.new("TextLabel")
-        Key.Parent = Row
-        Key.BackgroundTransparency = 1
-        Key.Size = UDim2.new(0.4, 0, 1, 0)
-        Key.Font = Enum.Font.GothamBold
-        Key.Text = keyText
-        Key.TextColor3 = THEME.Accent
-        Key.TextXAlignment = Enum.TextXAlignment.Left
-        Key.TextSize = 12
-
-        local Action = Instance.new("TextLabel")
-        Action.Parent = Row
-        Action.BackgroundTransparency = 1
-        Action.Position = UDim2.new(0.4, 0, 0, 0)
-        Action.Size = UDim2.new(0.6, 0, 1, 0)
-        Action.Font = Enum.Font.Gotham
-        Action.Text = actionText
-        Action.TextColor3 = THEME.TextMain
-        Action.TextXAlignment = Enum.TextXAlignment.Right
-        Action.TextSize = 12
+    -- // BUTTON GENERATOR //
+    local Buttons = {}
+    local function AddBtn(parent, name, text, color)
+        local b = CreateUIElement("TextButton", {
+            Parent = parent, Size = UDim2.new(1, 0, 0, 35), BackgroundColor3 = color or THEME.Button,
+            Text = text, Font = Enum.Font.GothamBold, TextColor3 = THEME.TextMain, TextSize = 14
+        })
+        CreateUIElement("UICorner", {Parent = b, CornerRadius = UDim.new(0, 6)})
+        Buttons[name] = b
+        return b
     end
 
-    AddKeybindRow("CAPSLOCK", "Pause / Unpause", 1)
-    AddKeybindRow("1", "Add Savestate", 2)
-    AddKeybindRow("2", "Remove Savestate", 3)
-    AddKeybindRow("3", "Load Last State", 4)
-    AddKeybindRow("4 / 5", "Frame Step", 5)
-    AddKeybindRow("6", "Save Run (JSON)", 6)
-    AddKeybindRow("0", "Playback TAS", 7)
-    AddKeybindRow("7", "Auto-Reset Env", 8) -- NEW
-    AddKeybindRow("C", "Toggle Collision", 9)
-    AddKeybindRow("UP / DOWN", "Visual Time Travel", 10)
-    AddKeybindRow("F8", "Resync Visuals", 11)
-    AddKeybindRow("EQUALS (=)", "Freeze Map Updates", 12)
-    AddKeybindRow("DELETE", "DESTROY UI", 13)
+    -- // CONTROLS TAB //
+    AddBtn(CtrlPanel, "Pause", "Play / Pause (CapsLock)")
+    AddBtn(CtrlPanel, "StepFwd", "Step Forward (5)")
+    AddBtn(CtrlPanel, "StepBack", "Rewind Frame (4)")
+    AddBtn(CtrlPanel, "AddState", "Add Savestate (1)", Color3.fromRGB(40, 90, 40))
+    AddBtn(CtrlPanel, "LoadState", "Load Last State (3)")
+    AddBtn(CtrlPanel, "RemState", "Remove State (2)", Color3.fromRGB(90, 40, 40))
+    AddBtn(CtrlPanel, "Resync", "Resync Visuals (F8)")
+    AddBtn(CtrlPanel, "Stop", "STOP TAS CREATOR (Del)", Color3.fromRGB(150, 0, 0))
 
-    -- // Button Events //
-    KeybindButton.MouseEnter:Connect(function()
-        TweenService:Create(KeybindButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}):Play()
-    end)
-    KeybindButton.MouseLeave:Connect(function()
-        TweenService:Create(KeybindButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 45)}):Play()
-    end)
+    -- // CONFIG TAB //
+    AddBtn(VisPanel, "DebugView", "Toggle Debug Hitboxes (V)")
+    AddBtn(VisPanel, "SmoothMode", "Extreme Smoothing: OFF")
+    AddBtn(VisPanel, "PathTracing", "TAS Path Tracing: OFF")
+    AddBtn(VisPanel, "Trajectory", "Predictive Velocity: ON")
+    AddBtn(VisPanel, "CamMode", "Playback Camera Follow: OFF")
+    AddBtn(VisPanel, "Collision", "Toggle Collision (C)")
 
-    local isKBOpen = false
-    KeybindButton.Activated:Connect(function()
-        isKBOpen = not isKBOpen
-        if isKBOpen then
-            KBFrame.Visible = true
-            -- Animating Opacity for effect
-            KBFrame.BackgroundTransparency = 1
-            KBFStroke.Transparency = 1
-            TweenService:Create(KBFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0.1}):Play()
-            TweenService:Create(KBFStroke, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
-            
-            KeybindButton.Text = "Hide Controls"
-            KeybindButton.TextColor3 = THEME.Accent
-        else
-            local t = TweenService:Create(KBFrame, TweenInfo.new(0.2), {BackgroundTransparency = 1})
-            TweenService:Create(KBFStroke, TweenInfo.new(0.2), {Transparency = 1}):Play()
-            t:Play()
-            t.Completed:Connect(function()
-                if not isKBOpen then KBFrame.Visible = false end
-            end)
-            KeybindButton.Text = "Controls"
-            KeybindButton.TextColor3 = THEME.TextMain
-        end
-    end)
+    -- // FILES TAB //
+    local SaveBox = CreateUIElement("TextBox", {
+        Parent = FilePanel, Size = UDim2.new(1, 0, 0, 35), BackgroundColor3 = THEME.Bg,
+        Text = "", PlaceholderText = "Enter filename to save...", Font = Enum.Font.Gotham, TextColor3 = THEME.TextMain, TextSize = 14
+    })
+    CreateUIElement("UICorner", {Parent = SaveBox, CornerRadius = UDim.new(0,6)})
+    CreateUIElement("UIStroke", {Parent = SaveBox, Color = THEME.Stroke, Thickness = 1})
+    
+    AddBtn(FilePanel, "Save", "SAVE RUN", THEME.Accent)
+    AddBtn(FilePanel, "Refresh", "REFRESH FILE LIST")
+    
+    local FileList = CreateUIElement("ScrollingFrame", {
+        Parent = FilePanel, Size = UDim2.new(1, 0, 0, 150), BackgroundColor3 = THEME.Bg,
+        ScrollBarThickness = 4, AutomaticCanvasSize = Enum.AutomaticSize.Y
+    })
+    CreateUIElement("UIListLayout", {Parent = FileList, SortOrder = Enum.SortOrder.LayoutOrder})
+    CreateUIElement("UICorner", {Parent = FileList, CornerRadius = UDim.new(0,6)})
+    CreateUIElement("UIStroke", {Parent = FileList, Color = THEME.Stroke, Thickness = 1})
 
+    local SelectedLabel = CreateUIElement("TextLabel", {
+        Parent = FilePanel, Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
+        Text = "Selected: None", Font = Enum.Font.Gotham, TextColor3 = THEME.TextDim, TextSize = 12
+    })
+    
+    AddBtn(FilePanel, "Load", "LOAD SELECTED RUN", Color3.fromRGB(0, 150, 100))
+    AddBtn(FilePanel, "PlaySelected", "PLAYBACK TAS (0)")
+
+    -- Return API
     return {
-        ScreenGui = ScreenGui,
-        TimeText = TimeText,
-        SavestatesCount = SavestatesCount,
-        FrameCount = FrameCount,
-        StatusText = StatusBadge,
-        MapEventInfo = MapEventInfo -- Now located in StatsPanel
+        ScreenGui = ScreenGui, TimeText = TimeText, StatusText = StatusText,
+        Buttons = Buttons, SaveBox = SaveBox, FileList = FileList, SelectedLabel = SelectedLabel
     }
 end
 
