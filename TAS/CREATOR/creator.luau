@@ -1,10 +1,13 @@
+--- START OF FILE Paste June 06, 2026 - Patched ---
+
 --[[
-    FE2 TAS Creator (Ultimate Edition)
+    FE2 TAS Creator (Ultimate Edition + Swim Fix)
     - INTACT: Smart .Changed Recorder, Map Autofarm, Button Sync, Zipline Fix.
     - NEW: Mobile UI Integration (Tabs/Buttons).
     - NEW: Debug View, Extreme Smoothing, Camera Follow.
     - NEW: In-Game File Loading & Run Explorer.
     - NEW: TAS Path Tracing & Predictive Trajectory.
+    - FIXED: Permanent Swim Bug & Entire-Bounding-Box Water Detection.
 ]]
 
 getgenv().TAS_Active = true 
@@ -222,6 +225,33 @@ local function IsPointInPart(part, point)
     local rel = part.CFrame:PointToObjectSpace(point)
     local halfSize = part.Size / 2
     return math.abs(rel.X) <= halfSize.X and math.abs(rel.Y) <= halfSize.Y and math.abs(rel.Z) <= halfSize.Z
+end
+
+-- [[ ENTIRE BOUNDING BOX WATER DETECTION ]]
+local function IsPartEntirelyInPart(containerPart, targetPart)
+    local tCF = targetPart.CFrame
+    local tSize = targetPart.Size / 2
+    local cCFInv = containerPart.CFrame:Inverse()
+    local cSize = containerPart.Size / 2
+
+    local corners = {
+        tCF * Vector3.new( tSize.X,  tSize.Y,  tSize.Z),
+        tCF * Vector3.new( tSize.X,  tSize.Y, -tSize.Z),
+        tCF * Vector3.new( tSize.X, -tSize.Y,  tSize.Z),
+        tCF * Vector3.new( tSize.X, -tSize.Y, -tSize.Z),
+        tCF * Vector3.new(-tSize.X,  tSize.Y,  tSize.Z),
+        tCF * Vector3.new(-tSize.X,  tSize.Y, -tSize.Z),
+        tCF * Vector3.new(-tSize.X, -tSize.Y,  tSize.Z),
+        tCF * Vector3.new(-tSize.X, -tSize.Y, -tSize.Z)
+    }
+
+    for _, corner in ipairs(corners) do
+        local rel = cCFInv * corner
+        if math.abs(rel.X) > cSize.X or math.abs(rel.Y) > cSize.Y or math.abs(rel.Z) > cSize.Z then
+            return false -- A corner is sticking out!
+        end
+    end
+    return true
 end
 
 local function GetPlayerCFrame()
@@ -1196,7 +1226,7 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
         if ClonedMap then
             local ExitRegion = ClonedMap:FindFirstChild("ExitRegion", true)
             if ExitRegion and not AutoSaved then
-                if IsPointInPart(ExitRegion, LocalPlayer.Character.HumanoidRootPart.Position) then
+                if IsPointInPart(ExitRegion, LocalPlayer.Character.HumanoidRootPart.CFrame.Position) then
                     AutoSaved = true; SendAlert("Reached Exit - Auto Saving...", Color3.fromRGB(0, 255, 0))
                     
                     local Export = CompileTASData()
@@ -1212,13 +1242,13 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
         LastHeartbeat = tick() 
     end
     
-    local PlayerPos = LocalPlayer.Character.HumanoidRootPart.Position
+    local RootPart = LocalPlayer.Character.HumanoidRootPart
     local InWater = false
     local IsSliding = (CurrentAnim and CurrentAnim[1] == "slide")
     
-    if not IsSliding then
+    if not IsSliding and RootPart then
         for _, waterPart in ipairs(WaterParts) do
-            if IsPointInPart(waterPart, PlayerPos) then InWater = true; break end
+            if IsPartEntirelyInPart(waterPart, RootPart) then InWater = true; break end
         end
     end
     getgenv().IsSwimming = InWater
@@ -1254,6 +1284,10 @@ local InputCon = UserInputService.InputBegan:Connect(function(input, gpe)
             SendAlert("Map Updates " .. (EnvPaused and "Paused" or "Active"), Color3.fromRGB(255, 255, 0))
         elseif k == Keybinds.ToggleTimeReset then
             AutoResetEnv = not AutoResetEnv
+            if UI_Elements and UI_Elements.Buttons then 
+                UI_Elements.Buttons.EnvSync.Text = "Auto-Reset Env: " .. (AutoResetEnv and "ON" or "OFF")
+                UI_Elements.Buttons.EnvSync.BackgroundColor3 = AutoResetEnv and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(45, 45, 55)
+            end
             SendAlert("Smart Env Sync: " .. (AutoResetEnv and "ON" or "OFF"), Color3.fromRGB(0, 255, 255))
         elseif k == Keybinds.Resync then
             IsPreviewingForward = false; IsPreviewingBackward = false; PreviewOffset = 0
