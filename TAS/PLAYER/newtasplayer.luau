@@ -10,6 +10,11 @@ if getgenv().TAS_RestoreAnim then
     getgenv().TAS_RestoreAnim = nil
 end
 
+if getgenv().TAS_MobileUI then
+    pcall(function() getgenv().TAS_MobileUI:Destroy() end)
+    getgenv().TAS_MobileUI = nil
+end
+
 if getgenv().TASConnections then
     for _, connection in pairs(getgenv().TASConnections) do
         if connection then connection:Disconnect() end
@@ -229,6 +234,11 @@ local function Cleanup(resetCharacter)
         getgenv().TAS_RestoreAnim = nil
     end
 
+    if getgenv().TAS_MobileUI then
+        pcall(function() getgenv().TAS_MobileUI:Destroy() end)
+        getgenv().TAS_MobileUI = nil
+    end
+
     if LP.Character then
         if LP.Character:FindFirstChild("Animate") and LP.Character.Animate:FindFirstChild("ToggleSwim") then
             pcall(function() LP.Character.Animate.ToggleSwim:Fire(false) end)
@@ -444,6 +454,64 @@ local function activateAnimation(AnimData, Elapsed)
     end
 end
 
+-- // UI & PAUSING SYSTEM SETUP //
+local IsPaused = false
+local PauseRequested = false
+
+local MobileUI = Instance.new("ScreenGui")
+MobileUI.Name = "TAS_MobileUI"
+MobileUI.ResetOnSpawn = false
+getgenv().TAS_MobileUI = MobileUI
+
+local successUI, _ = pcall(function()
+    MobileUI.Parent = game:GetService("CoreGui")
+end)
+if not successUI then
+    MobileUI.Parent = LP:WaitForChild("PlayerGui")
+end
+
+local PauseBtn = Instance.new("TextButton")
+PauseBtn.Size = UDim2.new(0, 160, 0, 50)
+PauseBtn.Position = UDim2.new(1, -180, 0.5, 0)
+PauseBtn.AnchorPoint = Vector2.new(0, 0.5)
+PauseBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+PauseBtn.BorderColor3 = Theme.Highlight
+PauseBtn.BorderSizePixel = 2
+PauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PauseBtn.Font = Enum.Font.GothamBold
+PauseBtn.TextSize = 14
+PauseBtn.Text = "Pause TAS (P)"
+PauseBtn.Parent = MobileUI
+
+local function TogglePause()
+    if IsPaused then
+        IsPaused = false
+        PauseRequested = false
+        if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
+        Log("Playback resumed!", "Success")
+    elseif PauseRequested then
+        -- Cancel waiting if button pressed again
+        PauseRequested = false
+        if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
+        Log("Pause request cancelled.", "Info")
+    else
+        PauseRequested = true
+        if PauseBtn then PauseBtn.Text = "Waiting for Ground..." end
+        Log("Pause requested! Waiting for ground...", "Warning")
+    end
+end
+
+AddConnection(game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.P then
+        TogglePause()
+    end
+end))
+
+AddConnection(PauseBtn.MouseButton1Click:Connect(function()
+    TogglePause()
+end))
+
 local Offset = SpawnPoint.Position - NewV(0, 1000, 0)
 local OldFrame = 3
 local RenderedFrames = 0
@@ -470,7 +538,9 @@ MainLoop = RS.Heartbeat:Connect(function()
     local Delta = CurrentClock - LastClock
     LastClock = CurrentClock
     
-    VisualElapsed = VisualElapsed + (Delta * (1 / (TimeModifier * DynamicTimeScale)))
+    if not IsPaused then
+        VisualElapsed = VisualElapsed + (Delta * (1 / (TimeModifier * DynamicTimeScale)))
+    end
     
     local liveWeld = RootPart:FindFirstChild("WalljumpWeld_Live")
     if liveWeld then liveWeld:Destroy() end
@@ -498,6 +568,18 @@ MainLoop = RS.Heartbeat:Connect(function()
     local FA = TAS[OldFrame]
     local FB = TAS[OldFrame + 1] or FA
     
+    -- Smart Pause Verification Logic
+    if PauseRequested then
+        local anim = FA.AAnimation and FA.AAnimation[1]
+        -- Lock pause state once character naturally executes a ground animation
+        if anim == "idle" or anim == "walk" or anim == "run" then
+            PauseRequested = false
+            IsPaused = true
+            if PauseBtn then PauseBtn.Text = "Resume TAS (P)" end
+            Log("Playback paused! Locked to idle.", "Success")
+        end
+    end
+    
     local Dur = FB.time - FA.time
     local Alpha = (Dur > 0) and math.clamp((VisualElapsed - FA.time) / Dur, 0, 1) or 0
 
@@ -511,14 +593,23 @@ MainLoop = RS.Heartbeat:Connect(function()
 
     local TargetCFrame = cfA:Lerp(cfB, Alpha) + Offset
     
-    if IsCurrentlySwimming and TargetVelocity.Magnitude > 0.5 then
-        local LookAtCFrame = NewC(TargetCFrame.Position, TargetCFrame.Position + TargetVelocity.Unit)
-        RootPart.CFrame = RootPart.CFrame:Lerp(LookAtCFrame, SmoothnessFactor)
-    else
+    if IsPaused then
+        RootPart.Velocity = Vector3.zero
         RootPart.CFrame = TargetCFrame
+        -- Ensure player is hardlocked to idle visually while paused so it doesn't look weird
+        if LastPlayedAnim ~= "idle" then
+            pcall(function() OriginalPlayAnim("idle", 0.1, Humanoid) end)
+            LastPlayedAnim = "idle"
+        end
+    else
+        RootPart.Velocity = TargetVelocity
+        if IsCurrentlySwimming and TargetVelocity.Magnitude > 0.5 then
+            local LookAtCFrame = NewC(TargetCFrame.Position, TargetCFrame.Position + TargetVelocity.Unit)
+            RootPart.CFrame = RootPart.CFrame:Lerp(LookAtCFrame, SmoothnessFactor)
+        else
+            RootPart.CFrame = TargetCFrame
+        end
+        pcall(activateAnimation, FA.AAnimation, VisualElapsed)
     end
-    
-    RootPart.Velocity = TargetVelocity
-    pcall(activateAnimation, FA.AAnimation, VisualElapsed)
 end)
 AddConnection(MainLoop)
