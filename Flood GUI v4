@@ -46,6 +46,7 @@ local Multiplayer = Workspace:WaitForChild("Multiplayer")
 -- Remotes
 local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
 local ReqPasskey = RemoteFolder:WaitForChild("ReqPasskey")
+local ReqRebirth = RemoteFolder:WaitForChild("ReqRebirth") -- Added ReqRebirth
 local NewMapVote = RemoteFolder:WaitForChild("NewMapVote")
 local UpdMapVote = RemoteFolder:WaitForChild("UpdMapVote")
 local AddedWaiting = RemoteFolder:WaitForChild("AddedWaiting")
@@ -92,6 +93,7 @@ local State = {
     FallbackToFarm = false,  
     AutoFarm = false,        
     AutoCollect = false,
+    AutoRebirth = false, -- Added AutoRebirth to State
     AutoLeave = false,
     UIEnabled = true,
     
@@ -759,6 +761,27 @@ task.spawn(function()
     end
 end)
 
+-- Auto Rebirth Loop (Every 60 seconds when enabled)
+task.spawn(function()
+    local lastRebirthAttempt = 0
+    while task.wait(1) do
+        if _G.LoopCancel then break end
+        if State.AutoRebirth then
+            local now = os.time()
+            if now - lastRebirthAttempt >= 60 then
+                local key = GetSessionKey()
+                if key then
+                    pcall(function()
+                        ReqRebirth:FireServer(key)
+                        Alert("Attempted Auto Rebirth", "Success")
+                    end)
+                end
+                lastRebirthAttempt = now
+            end
+        end
+    end
+end)
+
 -- Mod & Movement Loop
 TrackConnection(RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
@@ -890,6 +913,11 @@ local function InitializeUI()
     mainSec:NewToggle("Auto Collect (Page-Escapee)", "Collects LostPage and Escapee automatically.", function(state)
         State.AutoCollect = state
         Alert("Auto Collect " .. (state and "Enabled" or "Disabled"), "Info")
+    end)
+    
+    mainSec:NewToggle("Auto Rebirth", "Automatically attempts to rebirth every 60 seconds.", function(state)
+        State.AutoRebirth = state
+        Alert("Auto Rebirth " .. (state and "Enabled" or "Disabled"), state and "Success" or "Error")
     end)
     
     mainSec:NewToggle("Enforce Difficulty Limiter", "Suicides to skip if map is too hard.", function(state)
