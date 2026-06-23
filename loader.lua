@@ -18,7 +18,7 @@ function import(webpath)
 end
 
 local startimport = tick()
-if import("/Flood GUI v3") and import("/TAS/TAS Editor") and import("/TAS/TAS Player") and import("/TAS/TAS Record Voiz") then
+if import("/Flood GUI v4") and import("/TAS/TAS Editor") and import("/TAS/TAS Player") and import("/TAS/TAS Record Voiz") then
     print("Imported Flood GUI in "..tostring(tick() - startimport))
 end
-loadfile("Flood-GUI/Flood GUI v3")(Branch)
+loadfile("Flood-GUI/Flood GUI v4")(Branch)
