@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Flood GUI v4
+-- Flood GUI v4 (Upgraded)
 -- Description: Exploit GUI for Flood Escape 2 providing various cheats and utilities.
 -- Credits: 
 --      TAS System: Tomato (Base by Voiz#5668)
@@ -10,17 +10,23 @@
 -- ==============================================================================
 -- [1] INSTANCE CLEARING & SETUP
 -- ==============================================================================
-if getgenv().FloodGUI_Connections then
+if getgenv().FloodGUI_Connections or getgenv().TomatoConnections then
     print("[Flood GUI]: Overriding previous instance...")
-    for _, connection in pairs(getgenv().FloodGUI_Connections) do
+    for _, connection in pairs(getgenv().FloodGUI_Connections or {}) do
+        if connection then pcall(function() connection:Disconnect() end) end
+    end
+    for _, connection in pairs(getgenv().TomatoConnections or {}) do
         if connection then pcall(function() connection:Disconnect() end) end
     end
     _G.LoopCancel = true
+    getgenv().TomatoAutoFarm = false
     task.wait(0.2)
 end
 
 getgenv().FloodGUI_Connections = {}
+getgenv().TomatoConnections = getgenv().FloodGUI_Connections -- Aliased for clean environment overrides
 getgenv().TasFileCache = {}
+getgenv().TomatoAutoFarm = false
 
 local function TrackConnection(connection)
     table.insert(getgenv().FloodGUI_Connections, connection)
@@ -46,7 +52,7 @@ local Multiplayer = Workspace:WaitForChild("Multiplayer")
 -- Remotes
 local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
 local ReqPasskey = RemoteFolder:WaitForChild("ReqPasskey")
-local ReqRebirth = RemoteFolder:WaitForChild("ReqRebirth") -- Added ReqRebirth
+local ReqRebirth = RemoteFolder:WaitForChild("ReqRebirth")
 local NewMapVote = RemoteFolder:WaitForChild("NewMapVote")
 local UpdMapVote = RemoteFolder:WaitForChild("UpdMapVote")
 local AddedWaiting = RemoteFolder:WaitForChild("AddedWaiting")
@@ -70,11 +76,11 @@ local COLORS = {
     Success = Color3.fromRGB(0, 255, 127),
     Warning = Color3.fromRGB(255, 170, 0),
     Error   = Color3.fromRGB(255, 60, 60),
-    Info    = Color3.fromRGB(0, 100, 255),
+    Info    = Color3.fromRGB(0, 220, 255),
     Item    = Color3.fromRGB(170, 85, 255)
 }
 
--- Custom Kavo UI Theme (Restored V3 Signature Blue)
+-- Custom Kavo UI Theme
 local KAVO_THEME = {
     SchemeColor = Color3.fromRGB(0, 100, 255),  
     Background = Color3.fromRGB(35, 35, 40),    
@@ -93,7 +99,7 @@ local State = {
     FallbackToFarm = false,  
     AutoFarm = false,        
     AutoCollect = false,
-    AutoRebirth = false, -- Added AutoRebirth to State
+    AutoRebirth = false, 
     AutoLeave = false,
     UIEnabled = true,
     
@@ -123,9 +129,12 @@ pcall(function() CLMAINenv = getsenv(CLMAIN) end)
 
 local function Alert(Text, ColorType)
     local Output = tostring(Text)
-    local C = COLORS[ColorType] or COLORS.System
+    local SelectedColor = COLORS[ColorType] or COLORS.System
     if CLMAINenv and CLMAINenv.newAlert then
-        pcall(function() CLMAINenv.newAlert(Output, C, nil, (ColorType == "Rainbow" and "rainbow" or nil)) end)
+        pcall(function() 
+            -- Structure: newAlert(Message, Color, Time, Style)
+            CLMAINenv.newAlert(Output, SelectedColor, nil, nil) 
+        end)
     end
     print("[Flood GUI]: " .. Output)
 end
@@ -206,6 +215,17 @@ local function ExecuteSecondaryScript(modeType)
     elseif modeType == "Play" then
         LoadExternalScript(CONFIG.TAS_PLAYER_URL)
     end
+end
+
+local function GetRandomPointInPart(Part)
+    local Size = Part.Size
+    local CFramePos = Part.CFrame
+    
+    local Rx = (math.random() - 0.5) * (Size.X * 0.9)
+    local Ry = (math.random() - 0.5) * (Size.Y * 0.9)
+    local Rz = (math.random() - 0.5) * (Size.Z * 0.9)
+    
+    return CFramePos * CFrame.new(Rx, Ry, Rz)
 end
 
 -- ==============================================================================
@@ -505,9 +525,8 @@ local function OpenTASFileManager()
 end
 
 -- ==============================================================================
--- [6] AUTO FARM ENGINE
+-- [6] AUTO FARM ENGINE (UPDATED MECHANICS)
 -- ==============================================================================
-
 local function StartAutoFarm(Map)
     Alert("Waiting for Teleport...", "System")
     local t = 0
@@ -523,7 +542,7 @@ local function StartAutoFarm(Map)
     
     repeat task.wait(0.1) until (hrp and not hrp.Anchored) or not (State.AutoFarm or State.AutoPlay)
 
-    Alert("Round Started! Farming...", "Success")
+    Alert("[FARM] Sequence Initialized. Scanning...", "Success")
     State.CurrentlyFarming = true
     
     local GodModeConn = nil
@@ -569,8 +588,6 @@ local function StartAutoFarm(Map)
     end
 
     Noclip(true)
-    local Attempts = 0
-    local EXITREGION_MAX = 2000
 
     while RunService.Heartbeat:Wait() and Check("InGame") and (State.AutoFarm or State.AutoPlay) do
         if not State.CurrentlyFarming then break end
@@ -578,45 +595,65 @@ local function StartAutoFarm(Map)
         local ExitRegion = Map:FindFirstChild("ExitRegion", true)
         if not hrp then break end
         
-        humanoid.Jump = true
         local FailedScan = true
         
         if not ExitRegion then
+            -- == BUTTON PHASE ==
+            if Camera.CameraSubject ~= humanoid then
+                Camera.CameraSubject = humanoid
+            end
+
             hrp.Anchored = true
             for _, Button in pairs(Buttons) do
+                if not (State.AutoFarm or State.AutoPlay) then break end 
+
                 local ButtonHitbox = Button:FindFirstChild("Hitbox")
                 if ButtonHitbox then
-                    if Button:FindFirstChild("TouchInterest", true) and Button:FindFirstChildWhichIsA("BillboardGui", true) then
+                    local TouchFound = Button:FindFirstChild("TouchInterest", true)
+                    local GuiFound = Button:FindFirstChildWhichIsA("BillboardGui", true)
+                    
+                    if TouchFound and GuiFound then
                         FailedScan = false
                         hrp.Anchored = false
-                        hrp.Velocity = Vector3.new(math.random(), 50 + math.random(), math.random())
-                        hrp.CFrame = CFrame.new(ButtonHitbox.Position)
-                        hrp.Velocity = Vector3.new(math.random(), -50 - math.random(), math.random())
-                        task.spawn(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+                        hrp.CFrame = CFrame.new(ButtonHitbox.Position - Vector3.new(math.random(), math.random(), math.random()))
+                        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                        task.wait(0.05)
+                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        task.wait(0.05)
                     end
                 end
             end
-            if FailedScan then task.wait() end
+            if FailedScan then 
+                RunService.Heartbeat:Wait() 
+            end
 
         elseif ExitRegion then
+            -- == EXIT PHASE ==
             Noclip(false)
             hrp.Anchored = false
-            if Attempts < EXITREGION_MAX and not State.Escaped then
-                Attempts = Attempts + 1
-                hrp.Velocity = Vector3.new(math.random(), 50 + math.random(), math.random())
-                hrp.CFrame = CFrame.new(ExitRegion.Position)
-                hrp.Velocity = Vector3.new(math.random(), -50 - math.random(), math.random())
-                task.spawn(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
-                if (hrp.Position - ExitRegion.Position).Magnitude <= 5 then Attempts = Attempts + 1 end
+            
+            if Camera.CameraSubject ~= ExitRegion then
+                Camera.CameraSubject = ExitRegion
+            end
+
+            if not State.Escaped then
+                local TargetCFrame = GetRandomPointInPart(ExitRegion)
+                hrp.CFrame = TargetCFrame
+                hrp.Velocity = Vector3.zero
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             else
                 State.Escaped = false
+                Camera.CameraSubject = humanoid
                 humanoid:ChangeState(Enum.HumanoidStateType.Dead)
-                Alert("Escaped Map. Resetting...", "Success")
+                Alert("Escape Detected. Resetting...", "Success")
                 break
             end
         end
     end
     
+    if Camera.CameraSubject ~= humanoid then
+        Camera.CameraSubject = humanoid
+    end
     Noclip(State.Noclip)
     if GodModeConn then GodModeConn:Disconnect() end
     State.CurrentlyFarming = false
@@ -642,10 +679,8 @@ TrackConnection(NewMapVote.OnClientEvent:Connect(function(dataPacket)
             local rank = DIFFICULTY_RANKS[map.difficulty] or 0
             local validDifficulty = rank <= (DIFFICULTY_RANKS[State.TargetDifficulty] or 999)
             
-            -- Calculate Cost: 0 if free, unlockCost if locked
             local cost = map.locked and (map.unlockCost or 0) or 0
 
-            -- Override: Target Snipe takes Absolute Precedence
             if State.TargetMapName ~= "" and cName:lower() == State.TargetMapName:lower() then
                 targetMapData = map
                 lowestCost = cost
@@ -663,7 +698,6 @@ TrackConnection(NewMapVote.OnClientEvent:Connect(function(dataPacket)
                     isEligible = true
                 end
                 
-                -- Keep updating if we found a cheaper eligible map
                 if isEligible and cost < lowestCost then
                     lowestCost = cost
                     targetMapData = map
@@ -680,7 +714,6 @@ TrackConnection(NewMapVote.OnClientEvent:Connect(function(dataPacket)
         end
     end
 
-    -- EXECUTE TAS SCRIPT IMMEDIATELY BEFORE MAP STARTS
     if State.AutoPlay then
         ExecuteSecondaryScript("Play")
     elseif State.Mode == "Record" and targetMapData then
@@ -698,7 +731,6 @@ TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
     local cleanName = CleanMapName(MapName)
     local hasTasFile = CheckGithubForFile(cleanName)
 
-    -- 1. Check Difficulty Limit (Force suicide if too hard)
     local success, result = pcall(function()
         local diffText = Workspace.Lobby.GameInfo.SurfaceGui.Frame.Difficulty.Difficulty.Text
         return diffText:split(":")[1]:gsub("^%s*(.-)%s*$", "%1")
@@ -715,12 +747,10 @@ TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
         return
     end
 
-    -- 2. Auto-Play (Stealth) Fallback Processing
     if State.AutoPlay then
         if not hasTasFile and State.FallbackToFarm then
             Alert("No TAS found for map. Forcing Blatant Fallback...", "Warning")
             
-            -- Forcefully sever TAS script connections to stop it from suiciding you
             if getgenv().TASConnections then
                 for _, conn in pairs(getgenv().TASConnections) do pcall(function() conn:Disconnect() end) end
             end
@@ -728,10 +758,9 @@ TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
             
             StartAutoFarm(NewMap)
         end
-        return -- If it has a file, or fallback is off, let the already-running TAS script handle it
+        return 
     end
 
-    -- 3. Standard Blatant Auto-Farm Logic
     if State.AutoFarm and not State.AutoPlay then
         Alert("Starting Auto-Farm operation on: " .. MapName, "Info")
         StartAutoFarm(NewMap)
@@ -761,7 +790,7 @@ task.spawn(function()
     end
 end)
 
--- Auto Rebirth Loop (Every 60 seconds when enabled)
+-- Auto Rebirth Loop
 task.spawn(function()
     local lastRebirthAttempt = 0
     while task.wait(1) do
@@ -839,7 +868,7 @@ if getgenv().hookmetamethod then
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", function(self, index)
         if State.SwimEnabled and index == "Position" and tostring(self) == "HumanoidRootPart" and not checkcaller() then
-            return Vector3.new(-23, -153, 0) -- Coordinates for water
+            return Vector3.new(-23, -153, 0)
         end
         return oldIndex(self, index)
     end)
@@ -907,6 +936,7 @@ local function InitializeUI()
     
     mainSec:NewToggle("Enable Auto-Farm", "Instantly teleports to hitboxes to win.", function(state)
         State.AutoFarm = state
+        getgenv().TomatoAutoFarm = state
         Alert("Blatant Auto Farm " .. (state and "Enabled" or "Disabled"), state and "Success" or "Error")
     end)
     
