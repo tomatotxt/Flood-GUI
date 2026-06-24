@@ -72,8 +72,8 @@ local OldIndex
 OldIndex = hookmetamethod(game, "__index", function(self, key)
     if not checkcaller() then
         if key == "Archivable" then return false end
-        -- Updated: Position spoofing will now respect getgenv().EnableAutoSwim and getgenv().PauseSpoofing
-        if getgenv().EnableAutoSwim and getgenv().IsSwimming and not getgenv().PauseSpoofing and key == "Position" and self.Name == "HumanoidRootPart" then
+        -- Updated: Position spoofing will now respect getgenv().TAS_Active, getgenv().EnableAutoSwim, and getgenv().PauseSpoofing
+        if getgenv().TAS_Active and getgenv().EnableAutoSwim and getgenv().IsSwimming and not getgenv().PauseSpoofing and key == "Position" and self.Name == "HumanoidRootPart" then
             return Vector3.new(-23, -153, 0)
         end
     end
@@ -579,17 +579,64 @@ end
 -- // CLEANUP //
 function ResetToNormal()
     getgenv().TAS_Active = false
-    for _, con in pairs(Connections) do con:Disconnect() end
+    getgenv().IsSwimming = false
+    getgenv().PauseSpoofing = false
+    getgenv().EnableAutoSwim = false
+    
+    -- Disconnect all event listeners safely
+    for _, con in pairs(Connections) do 
+        pcall(function() con:Disconnect() end) 
+    end
     Connections = {}
     
-    TotalButtons = {}; ButtonRegistry = {}; OrderedButtonRegistry = {}; RecordedButtonSequence = {}
-    MapEvents = {}; MapUUIDs = {}; SavedLighting = {}; LightingCaptured = false; AutoSaved = false
+    -- Restore original animation engine
+    if AnimEnv and OriginalPlayAnim then
+        pcall(function()
+            AnimEnv.playAnimation = OriginalPlayAnim
+        end)
+    end
     
-    if ClonedMap then ClonedMap:Destroy(); ClonedMap = nil end
-    if UI_Elements and UI_Elements.ScreenGui then UI_Elements.ScreenGui:Destroy() end
+    -- Restore native ambient lighting properties
+    if LightingCaptured and SavedLighting.Props then
+        pcall(function()
+            for prop, val in pairs(SavedLighting.Props) do
+                Lighting[prop] = val
+            end
+            Lighting:ClearAllChildren()
+            for _, c in ipairs(SavedLighting.Children) do
+                c:Clone().Parent = Lighting
+            end
+        end)
+    end
+    
+    -- Clean up path & trajectory rendering elements
+    for _, line in ipairs(TrajectoryLines) do pcall(function() line:Destroy() end) end
+    TrajectoryLines = {}
+    for _, line in ipairs(PathLines) do pcall(function() line:Destroy() end) end
+    PathLines = {}
+    if TrajectoryFolder then pcall(function() TrajectoryFolder:Destroy() end) end
+    
+    -- Reset noclip, speed, and positioning systems
+    pcall(function() Noclip(false) end)
+    pcall(function()
+        local Root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if Root then Root.Anchored = false end
+        local Hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if Hum then
+            Hum.WalkSpeed = 16 -- Roblox standard WalkSpeed
+            Hum.JumpPower = 50 -- Roblox standard JumpPower
+        end
+    end)
+    
+    TotalButtons = {}; ButtonRegistry = {}; OrderedButtonRegistry = {}; RecordedButtonSequence = {}
+    MapEvents = {}; MapUUIDs = {}; SavedLighting = {Props = {}, Children = {}}; LightingCaptured = false; AutoSaved = false
+    
+    if ClonedMap then pcall(function() ClonedMap:Destroy() end); ClonedMap = nil end
+    if UI_Elements and UI_Elements.ScreenGui then pcall(function() UI_Elements.ScreenGui:Destroy() end) end
     UI_Elements = nil
     
-    LocalPlayer.Character:BreakJoints() -- Hard Reset
+    -- Clear physical character state variables through standard reset
+    pcall(function() LocalPlayer.Character:BreakJoints() end)
     SendAlert("TAS Creator Stopped", Color3.fromRGB(255, 0, 0))
 end
 
@@ -896,43 +943,6 @@ local function SetupMap()
     WaterParts = {}; TotalButtons = {}; ButtonRegistry = {}; OrderedButtonRegistry = {}
     local CheckedButtonParts = {}
 
-    local function RegisterButton(btn)
-        if not btn or CheckedButtonParts[btn] then return end
-        CheckedButtonParts[btn] = true
-        table.insert(TotalButtons, btn)
-        
-        local sel = Instance.new("SelectionBox", btn)
-        sel.Adornee = btn; sel.Color3 = Color3.fromRGB(255, 140, 0); sel.SurfaceTransparency = 0.8
-        btn.CanTouch = true
-        
-        local uuid = GetUUID(btn)
-        local order = table.find(RecordedButtonSequence, uuid) or 999
-        local recTime = ButtonPressTimings[uuid] 
-        
-        local bData = {IsPressed = false, PressTime = nil, SelectionBox = sel, Order = order, RecordedTime = recTime}
-        ButtonRegistry[btn] = bData; OrderedButtonRegistry[order] = bData
-        
-        AddConnection(btn.Touched:Connect(function(hit)
-            if hit.Parent == LocalPlayer.Character and not bData.IsPressed then
-                if not RunStart then return end
-                if bData.Order and bData.Order > 1 then
-                    local prevBtn = OrderedButtonRegistry[bData.Order - 1]
-                    if prevBtn and not prevBtn.IsPressed then SendAlert("WRONG ORDER! Press Button #" .. (bData.Order - 1) .. " first!", Color3.fromRGB(255, 0, 0)); return end
-                end
-                
-                local RealTime = tick() - RunStart - TimeOffset
-                if AutoResetEnv and bData.RecordedTime then
-                    PreviewOffset = bData.RecordedTime - RealTime
-                    SendAlert("Synced to " .. string.format("%.2fs", bData.RecordedTime), Color3.fromRGB(0, 255, 255))
-                end
-                
-                bData.IsPressed = true; bData.PressTime = RealTime; bData.TruePressTime = RealTime 
-                sel.Color3 = Color3.fromRGB(0, 255, 0)
-                SendAlert("Button " .. (order ~= 999 and "#"..order or "") .. " Pressed!", Color3.fromRGB(0, 255, 0))
-            end
-        end))
-    end
-
     for _, obj in ipairs(ClonedMap:GetDescendants()) do
         if obj:IsA("BasePart") then
              if obj.Name:find("_Water") then table.insert(WaterParts, obj) end
@@ -953,7 +963,41 @@ local function SetupMap()
             local ButtonPart = nil
             if obj.Parent and obj.Parent.Parent and obj.Parent.Parent:IsA("BasePart") then ButtonPart = obj.Parent.Parent
             elseif obj.Parent and obj.Parent.Parent and obj.Parent.Parent:IsA("Model") then ButtonPart = obj.Parent.Parent:FindFirstChildOfClass("BasePart") end
-            RegisterButton(ButtonPart)
+            if ButtonPart and not CheckedButtonParts[ButtonPart] then
+                CheckedButtonParts[ButtonPart] = true
+                table.insert(TotalButtons, ButtonPart)
+                
+                local sel = Instance.new("SelectionBox", ButtonPart)
+                sel.Adornee = ButtonPart; sel.Color3 = Color3.fromRGB(255, 140, 0); sel.SurfaceTransparency = 0.8
+                ButtonPart.CanTouch = true
+                
+                local uuid = GetUUID(ButtonPart)
+                local order = table.find(RecordedButtonSequence, uuid) or 999
+                local recTime = ButtonPressTimings[uuid] 
+                
+                local bData = {IsPressed = false, PressTime = nil, SelectionBox = sel, Order = order, RecordedTime = recTime}
+                ButtonRegistry[ButtonPart] = bData; OrderedButtonRegistry[order] = bData
+                
+                AddConnection(ButtonPart.Touched:Connect(function(hit)
+                    if hit.Parent == LocalPlayer.Character and not bData.IsPressed then
+                        if not RunStart then return end
+                        if bData.Order and bData.Order > 1 then
+                            local prevBtn = OrderedButtonRegistry[bData.Order - 1]
+                            if prevBtn and not prevBtn.IsPressed then SendAlert("WRONG ORDER! Press Button #" .. (bData.Order - 1) .. " first!", Color3.fromRGB(255, 0, 0)); return end
+                        end
+                        
+                        local RealTime = tick() - RunStart - TimeOffset
+                        if AutoResetEnv and bData.RecordedTime then
+                            PreviewOffset = bData.RecordedTime - RealTime
+                            SendAlert("Synced to " .. string.format("%.2fs", bData.RecordedTime), Color3.fromRGB(0, 255, 255))
+                        end
+                        
+                        bData.IsPressed = true; bData.PressTime = RealTime; bData.TruePressTime = RealTime 
+                        sel.Color3 = Color3.fromRGB(0, 255, 0)
+                        SendAlert("Button " .. (order ~= 999 and "#"..order or "") .. " Pressed!", Color3.fromRGB(0, 255, 0))
+                    end
+                end))
+            end
         end
         
         if isRandomString(obj.Name) and obj:IsA("Model") then
@@ -965,7 +1009,41 @@ local function SetupMap()
                         if c:IsA("BasePart") and tostring(c.BrickColor) ~= "Medium stone grey" then hp = c; break end
                     end
                 end
-                RegisterButton(hp)
+                if hp and not CheckedButtonParts[hp] then
+                    CheckedButtonParts[hp] = true
+                    table.insert(TotalButtons, hp)
+                    
+                    local sel = Instance.new("SelectionBox", hp)
+                    sel.Adornee = hp; sel.Color3 = Color3.fromRGB(255, 140, 0); sel.SurfaceTransparency = 0.8
+                    hp.CanTouch = true
+                    
+                    local uuid = GetUUID(hp)
+                    local order = table.find(RecordedButtonSequence, uuid) or 999
+                    local recTime = ButtonPressTimings[uuid] 
+                    
+                    local bData = {IsPressed = false, PressTime = nil, SelectionBox = sel, Order = order, RecordedTime = recTime}
+                    ButtonRegistry[hp] = bData; OrderedButtonRegistry[order] = bData
+                    
+                    AddConnection(hp.Touched:Connect(function(hit)
+                        if hit.Parent == LocalPlayer.Character and not bData.IsPressed then
+                            if not RunStart then return end
+                            if bData.Order and bData.Order > 1 then
+                                local prevBtn = OrderedButtonRegistry[bData.Order - 1]
+                                if prevBtn and not prevBtn.IsPressed then SendAlert("WRONG ORDER! Press Button #" .. (bData.Order - 1) .. " first!", Color3.fromRGB(255, 0, 0)); return end
+                            end
+                            
+                            local RealTime = tick() - RunStart - TimeOffset
+                            if AutoResetEnv and bData.RecordedTime then
+                                PreviewOffset = bData.RecordedTime - RealTime
+                                SendAlert("Synced to " .. string.format("%.2fs", bData.RecordedTime), Color3.fromRGB(0, 255, 255))
+                            end
+                            
+                            bData.IsPressed = true; bData.PressTime = RealTime; bData.TruePressTime = RealTime 
+                            sel.Color3 = Color3.fromRGB(0, 255, 0)
+                            SendAlert("Button " .. (order ~= 999 and "#"..order or "") .. " Pressed!", Color3.fromRGB(0, 255, 0))
+                        end
+                    end))
+                end
             end
         end
     end
