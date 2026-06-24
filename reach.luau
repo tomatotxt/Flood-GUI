@@ -32,7 +32,7 @@ end
 getgenv().TomatoAutoFarm = true
 
 -- ==============================================================================
--- [LOGIC] MODE HANDLER (TESTING BRANCH)
+-- [LOGIC] MODE HANDLER (v4beta BRANCH)
 -- ==============================================================================
 
 local function LoadScript(url)
@@ -54,10 +54,10 @@ end
 local function ExecuteSecondaryScript()
     if MODE == "Record" then
         print("!!! TARGET MAP FOUND - MODE: RECORD - EXECUTING CREATOR SCRIPT !!!")
-        LoadScript("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/testing/TAS/CREATOR/creator.luau")
+        LoadScript("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/v4beta/TAS/CREATOR/creator.luau")
     elseif MODE == "Play" then
         print("!!! TARGET MAP FOUND - MODE: PLAY - EXECUTING PLAYER SCRIPT !!!")
-        LoadScript("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/testing/TAS/PLAYER/newtasplayer.luau")
+        LoadScript("https://raw.githubusercontent.com/tomatotxt/Flood-GUI/v4beta/TAS/PLAYER/newtasplayer.luau")
     else
         warn("INVALID MODE SELECTED! Please set MODE to 'Record' or 'Play'.")
     end

@@ -60,10 +60,10 @@ local AlertRemote = RemoteFolder:WaitForChild("Alert")
 
 local CONFIG = {
     UI_LIBRARY = "https://raw.githubusercontent.com/tomatotxt/code/refs/heads/main/kavomobile.luau",
-    TAS_BASE_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/testing/TAS%20FILES/", 
-    TAS_API_URL = "https://api.github.com/repos/tomatotxt/Flood-GUI/contents/TAS%20FILES?ref=testing",
-    TAS_CREATOR_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/testing/TAS/CREATOR/creator.luau",
-    TAS_PLAYER_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/testing/TAS/PLAYER/newtasplayer.luau",
+    TAS_BASE_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/v4beta/TAS%20FILES/", 
+    TAS_API_URL = "https://api.github.com/repos/tomatotxt/Flood-GUI/contents/TAS%20FILES?ref=v4beta",
+    TAS_CREATOR_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/v4beta/TAS/CREATOR/creator.luau",
+    TAS_PLAYER_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/v4beta/TAS/PLAYER/newtasplayer.luau",
     DISCORD_INVITE = "https://discord.gg/8N2M9fHJqa"
 }
 
