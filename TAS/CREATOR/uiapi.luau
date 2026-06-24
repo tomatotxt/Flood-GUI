@@ -1,5 +1,3 @@
---- START OF FILE uiapi.luau ---
-
 --[[ 
     FE2 TAS UI Library (Mobile-Ready Tabbed Edition)
     - 100% Backwards Compatible with legacy creator.luau
@@ -252,6 +250,7 @@ function TAS_UI.Create()
     AddBtn(ConfigPage, "Trajectory", "Predictive Velocity: OFF")
     AddBtn(ConfigPage, "CamMode", "Camera Follow: OFF")
     AddBtn(ConfigPage, "EnvSync", "Auto-Reset Env: OFF")
+    AddBtn(ConfigPage, "AutoSwim", "Auto-Swim: ON", Color3.fromRGB(0, 150, 100)) -- Added Auto-Swim Toggle (ON by default)
 
     -- // Populate Files Tab //
     local SaveBox = Instance.new("TextBox", FilePage)
@@ -314,9 +313,7 @@ function TAS_UI.Create()
     end)
 
     -- // RETURN TABLE //
-    -- Returns original elements for legacy script compatibility, AND new elements for future logic hookups
     return {
-        -- Legacy Elements (Keeps old creator.luau working perfectly)
         ScreenGui = ScreenGui,
         TimeText = TimeText,
         SavestatesCount = SavestatesCount,
@@ -324,7 +321,6 @@ function TAS_UI.Create()
         StatusText = StatusBadge,
         MapEventInfo = MapEventInfo,
 
-        -- New Interactive Elements (For the next version of creator.luau)
         Buttons = ExportedButtons,
         SaveBox = SaveBox,
         FileList = FileList,

@@ -1,15 +1,3 @@
---- START OF FILE Paste June 06, 2026 - Patched ---
-
---[[
-    FE2 TAS Creator (Ultimate Edition + Swim Fix)
-    - INTACT: Smart .Changed Recorder, Map Autofarm, Button Sync, Zipline Fix.
-    - NEW: Mobile UI Integration (Tabs/Buttons).
-    - NEW: Debug View, Extreme Smoothing, Camera Follow.
-    - NEW: In-Game File Loading & Run Explorer.
-    - NEW: TAS Path Tracing & Predictive Trajectory.
-    - FIXED: Permanent Swim Bug & Entire-Bounding-Box Water Detection.
-]]
-
 getgenv().TAS_Active = true 
 
 local UI_API_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/testing/TAS/CREATOR/uiapi.luau"
@@ -22,6 +10,7 @@ getgenv().TargetSmoothingFPS = 24
 getgenv().ShowTASPathDuringPlayback = false
 getgenv().PlaybackCamera = false
 getgenv().ShowVelocityPredictor = false
+getgenv().EnableAutoSwim = true -- Added default configuration
 
 local Keybinds = {
     AddSavestate = "One",
@@ -37,7 +26,8 @@ local Keybinds = {
     Resync = "F8",
     EnvPause = "Equals",
     ToggleTimeReset = "Seven",
-    DebugToggler = "V"
+    DebugToggler = "V",
+    AutoSwimToggler = "T" -- Added Auto-Swim toggle keybind (T)
 }
 
 -- // SERVICES //
@@ -82,7 +72,8 @@ local OldIndex
 OldIndex = hookmetamethod(game, "__index", function(self, key)
     if not checkcaller() then
         if key == "Archivable" then return false end
-        if getgenv().IsSwimming and key == "Position" and self.Name == "HumanoidRootPart" then
+        -- Updated: Position spoofing will now respect getgenv().EnableAutoSwim
+        if getgenv().EnableAutoSwim and getgenv().IsSwimming and key == "Position" and self.Name == "HumanoidRootPart" then
             return Vector3.new(-23, -153, 0)
         end
     end
@@ -248,7 +239,7 @@ local function IsPartEntirelyInPart(containerPart, targetPart)
     for _, corner in ipairs(corners) do
         local rel = cCFInv * corner
         if math.abs(rel.X) > cSize.X or math.abs(rel.Y) > cSize.Y or math.abs(rel.Z) > cSize.Z then
-            return false -- A corner is sticking out!
+            return false
         end
     end
     return true
@@ -386,6 +377,16 @@ local function BindUI()
         btns.EnvSync.Text = "Auto-Reset Env: " .. (AutoResetEnv and "ON" or "OFF")
         btns.EnvSync.BackgroundColor3 = AutoResetEnv and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(45, 45, 55)
     end)
+    
+    -- Added: Backwards compatible registration for AutoSwim button logic
+    if btns.AutoSwim then
+        btns.AutoSwim.Activated:Connect(function()
+            getgenv().EnableAutoSwim = not getgenv().EnableAutoSwim
+            btns.AutoSwim.Text = "Auto-Swim: " .. (getgenv().EnableAutoSwim and "ON" or "OFF")
+            btns.AutoSwim.BackgroundColor3 = getgenv().EnableAutoSwim and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(45, 45, 55)
+            SendAlert("Auto-Swim " .. (getgenv().EnableAutoSwim and "Enabled" or "Disabled"), getgenv().EnableAutoSwim and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0))
+        end)
+    end
 
     -- Files
     btns.SaveRun.Activated:Connect(function()
@@ -1042,7 +1043,6 @@ function PlaybackTAS(Data)
     IsViewingTAS = true
     SendAlert("Viewing TAS Preview", Color3.fromRGB(183, 0, 255))
     
-    -- [[ NEW: EXTREME SMOOTHING LOGIC ]] --
     if getgenv().ExtremeSmoothing then
         local smoothed = {}
         local interval = 1 / getgenv().TargetSmoothingFPS
@@ -1066,7 +1066,6 @@ function PlaybackTAS(Data)
     LastTASAnim = nil
     local NewC, AngC, NewV = CFrame.new, CFrame.fromEulerAnglesXYZ, Vector3.new
 
-    -- [[ NEW: PATH TRACING ]] --
     if getgenv().ShowTASPathDuringPlayback then
         for _, line in ipairs(PathLines) do line:Destroy() end; PathLines = {}
         for i = 1, #Data - 1, (getgenv().ExtremeSmoothing and 1 or 4) do
@@ -1116,7 +1115,6 @@ function PlaybackTAS(Data)
         local vA = NewV(unpack(FA.VVelocity)); local vB = NewV(unpack(FB.VVelocity))
         Root.Velocity = vA:Lerp(vB, Alpha)
         
-        -- [[ NEW: TOGGLEABLE CAMERA ]] --
         if getgenv().PlaybackCamera then
             local camA = NewC(unpack(FA.CCameraCFrame, 1, 3)) * AngC(unpack(FA.CCameraCFrame, 4, 6))
             local camB = NewC(unpack(FB.CCameraCFrame, 1, 3)) * AngC(unpack(FB.CCameraCFrame, 4, 6))
@@ -1142,7 +1140,6 @@ AddConnection(RunService.RenderStepped:Connect(function()
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root and root.Velocity.Magnitude > 0.5 then
         local p = root.Position; local v = root.Velocity; local dt = 1/60
-        -- Account for FE2 Water Gravity Simulation
         local grav = getgenv().IsSwimming and Vector3.new(0, -20, 0) or Vector3.new(0, -workspace.Gravity, 0)
         local rayParams = RaycastParams.new(); rayParams.FilterDescendantsInstances = {char}
         
@@ -1246,7 +1243,8 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
     local InWater = false
     local IsSliding = (CurrentAnim and CurrentAnim[1] == "slide")
     
-    if not IsSliding and RootPart then
+    -- Updated: Active water check will now skip scanning if EnableAutoSwim is false
+    if getgenv().EnableAutoSwim and not IsSliding and RootPart then
         for _, waterPart in ipairs(WaterParts) do
             if IsPartEntirelyInPart(waterPart, RootPart) then InWater = true; break end
         end
@@ -1296,6 +1294,13 @@ local InputCon = UserInputService.InputBegan:Connect(function(input, gpe)
             if not IsViewingTAS then PlaybackTAS(CompileTASData()) end
         elseif k == Keybinds.LoadRun then
             if SelectedFileToLoad ~= "" then pcall(function() PlaybackTAS(HttpService:JSONDecode(readfile("Flood-GUI/TAS FILES/" .. SelectedFileToLoad))) end) end
+        elseif k == Keybinds.AutoSwimToggler then -- Added Keybind Handler (T)
+            getgenv().EnableAutoSwim = not getgenv().EnableAutoSwim
+            if UI_Elements and UI_Elements.Buttons and UI_Elements.Buttons.AutoSwim then
+                UI_Elements.Buttons.AutoSwim.Text = "Auto-Swim: " .. (getgenv().EnableAutoSwim and "ON" or "OFF")
+                UI_Elements.Buttons.AutoSwim.BackgroundColor3 = getgenv().EnableAutoSwim and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(45, 45, 55)
+            end
+            SendAlert("Auto-Swim " .. (getgenv().EnableAutoSwim and "Enabled" or "Disabled"), getgenv().EnableAutoSwim and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0))
         elseif k == Keybinds.DebugToggler then
             DebugActive = not DebugActive
             if DebugActive then
