@@ -72,8 +72,8 @@ local OldIndex
 OldIndex = hookmetamethod(game, "__index", function(self, key)
     if not checkcaller() then
         if key == "Archivable" then return false end
-        -- Updated: Position spoofing will now respect getgenv().EnableAutoSwim
-        if getgenv().EnableAutoSwim and getgenv().IsSwimming and key == "Position" and self.Name == "HumanoidRootPart" then
+        -- Updated: Position spoofing will now respect getgenv().EnableAutoSwim and getgenv().PauseSpoofing
+        if getgenv().EnableAutoSwim and getgenv().IsSwimming and not getgenv().PauseSpoofing and key == "Position" and self.Name == "HumanoidRootPart" then
             return Vector3.new(-23, -153, 0)
         end
     end
@@ -130,6 +130,7 @@ local RECORD_INTERVAL = 1 / TARGET_FPS
 
 -- Auto-Swim
 getgenv().IsSwimming = false
+getgenv().PauseSpoofing = false -- Track zipline contact to pause position spoofing
 local WaterParts = {}
 
 -- Button Tracking
@@ -935,6 +936,18 @@ local function SetupMap()
     for _, obj in ipairs(ClonedMap:GetDescendants()) do
         if obj:IsA("BasePart") then
              if obj.Name:find("_Water") then table.insert(WaterParts, obj) end
+             
+             -- Dynamic Zipline / Rope Touch Listener
+             if obj.Name == "RopeStart" then
+                 AddConnection(obj.Touched:Connect(function(hit)
+                     if hit.Parent == LocalPlayer.Character and not getgenv().PauseSpoofing then
+                         getgenv().PauseSpoofing = true
+                         -- Pause spoofing temporarily to let the engine register the zipline touch and attach the player
+                         task.wait(0.5) 
+                         getgenv().PauseSpoofing = false
+                     end
+                 end))
+             end
         end
         if obj.Name == "ButtonIcon" then
             local ButtonPart = nil
@@ -1266,7 +1279,7 @@ local InputCon = UserInputService.InputBegan:Connect(function(input, gpe)
             local Export = CompileTASData()
             local name = (UI_Elements.SaveBox and UI_Elements.SaveBox.Text ~= "") and UI_Elements.SaveBox.Text or (ClonedMap and ClonedMap.Settings:GetAttribute("MapName") or "MyRun")
             if not isfolder("Flood-GUI/TAS FILES") then makefolder("Flood-GUI/TAS FILES") end
-            writefile("Flood-GUI/TAS FILES/" .. name .. ".json", HttpService:JSONEncode(Export))
+            writefile("Flood-GUI/TAS FILES/" .. name .. ".json", HttpService:JSONEncode(CompileTASData()))
             SendAlert("Run Saved!", Color3.fromRGB(0, 255, 0)); RefreshFileList()
         elseif k == Keybinds.GoFrameForward then
             if IsRewinding then return end
