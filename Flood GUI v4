@@ -912,7 +912,7 @@ local function InitializeUI()
         Alert("Target map set to: " .. txt, "System")
     end)
 
-    tasSec:NewKeybind("Toggle Swim Mode [TAS]", "Simulate water state for TAS.", Enum.KeyCode.T, function()
+    tasSec:NewKeybind("Toggle Swim Mode [TAS]", "Simulate water state for TAS.", Enum.KeyCode.Y, function()
         State.SwimEnabled = not State.SwimEnabled
         Alert("TAS Swim Mode " .. (State.SwimEnabled and "Enabled" or "Disabled"), "Info")
     end)
