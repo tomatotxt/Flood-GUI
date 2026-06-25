@@ -983,7 +983,7 @@ local function InitializeUI()
         Alert("Difficulty Limiter " .. (state and "Enabled" or "Disabled"), "Info")
     end)
 
-    mainSec:NewDropdown("Max Difficulty Level", "Skip maps harder than this.", {"Easy", "Normal", "Hard", "Insane", "Crazy", "Crazy+", "None"}, function(current)
+    mainSec:NewDropdown("Max Difficulty Level", "Skip maps harder than this.", {"None", "Crazy+", "Crazy", "Insane", "Hard", "Normal", "Easy"}, function(current)
         State.TargetDifficulty = current
         Alert("Max Difficulty set to: " .. current, "System")
     end)
