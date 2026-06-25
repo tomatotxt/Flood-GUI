@@ -845,8 +845,9 @@ TrackConnection(RunService.Heartbeat:Connect(function()
     if hum then
         if hum.WalkSpeed ~= State.WalkSpeed then hum.WalkSpeed = State.WalkSpeed end
         if hum.JumpPower ~= State.JumpPower then hum.JumpPower = State.JumpPower end
-        if State.GodMode and hum.Health > 0 and hum.Health < 100 then
-            hum.Health = 1000
+        if State.GodMode then
+            hum.MaxHealth = 100000
+            hum.Health = 100000
         end
     end
 end))
