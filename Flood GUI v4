@@ -20,6 +20,7 @@ if getgenv().FloodGUI_Connections or getgenv().TomatoConnections then
     end
     _G.LoopCancel = true
     getgenv().TomatoAutoFarm = false
+    getgenv().IsTASPlaying = false
     task.wait(0.2)
 end
 
@@ -27,6 +28,7 @@ getgenv().FloodGUI_Connections = {}
 getgenv().TomatoConnections = getgenv().FloodGUI_Connections -- Aliased for clean environment overrides
 getgenv().TasFileCache = {}
 getgenv().TomatoAutoFarm = false
+getgenv().IsTASPlaying = false
 
 local function TrackConnection(connection)
     table.insert(getgenv().FloodGUI_Connections, connection)
@@ -714,9 +716,8 @@ TrackConnection(NewMapVote.OnClientEvent:Connect(function(dataPacket)
         end
     end
 
-    if State.AutoPlay then
-        ExecuteSecondaryScript("Play")
-    elseif State.Mode == "Record" and targetMapData then
+    -- Execution moved to background loop to avoid NewMapVote delays
+    if State.Mode == "Record" and targetMapData then
         ExecuteSecondaryScript("Record")
     end
 end))
@@ -780,6 +781,29 @@ end))
 -- ==============================================================================
 -- [8] BACKGROUND LOOPS & MODS
 -- ==============================================================================
+
+-- TAS Auto-Play Loop
+task.spawn(function()
+    while task.wait(1) do
+        if _G.LoopCancel then break end
+        
+        -- Trigger if AutoPlay is enabled, TAS isn't currently playing, and fallback farm isn't active
+        if State.AutoPlay and not getgenv().IsTASPlaying and not State.CurrentlyFarming then
+            getgenv().IsTASPlaying = true -- Prevent spam HTTP requests while downloading
+            
+            task.spawn(function()
+                local success, err = pcall(function()
+                    ExecuteSecondaryScript("Play")
+                end)
+                
+                if not success then
+                    Alert("Failed to load TAS script: " .. tostring(err), "Error")
+                    getgenv().IsTASPlaying = false -- Revert if HTTP request or execution fails
+                end
+            end)
+        end
+    end
+end)
 
 -- Lift Rejoin Loop
 task.spawn(function()

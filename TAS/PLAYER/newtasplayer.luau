@@ -1,6 +1,6 @@
 local TimeModifier = 1 -- [CONTROL SPEED HERE] (1 = Normal, 0.5 = 2x Speed, 2 = Slow Motion)
 local DynamicTimeScale = 1 -- [MAP EVENT MODIFIER] Dynamically scales speed mid-game
-local SmoothnessFactor = 0.15 -- [ROTATION SMOOTHING] Lower = Smoother, Higher = Snappier (0.1-0.2 recommended)
+local SmoothnessFactor = 0.2 -- [ROTATION SMOOTHING] Lower = Smoother, Higher = Snappier (0.1-0.2 recommended)
 
 print("Welcome to the TAS Player! (V65) - Auto-Queue & Smooth Movements Active")
 
@@ -43,7 +43,7 @@ local NewV = Vector3.new
 local NewC = CFrame.new
 local AngC = CFrame.fromEulerAnglesXYZ
 local LP = game.Players.LocalPlayer
-local Multi = workspace.Multiplayer
+local Multi = workspace:WaitForChild("Multiplayer")
 local RS = game:GetService('RunService')
 local HttpService = game:GetService("HttpService")
 
@@ -102,16 +102,11 @@ task.spawn(function()
 end)
 
 if not getgenv().alreadystarted then
-    Log("Welcome to the TAS Engine! (v65)", "System")
-    task.wait(0.1)
-    Log("Smooth movements enabled.", "System")
-    task.wait(0.1)
+    Log("Welcome to the TAS Engine! (v65) - Smooth movements enabled.", "System")
     Log("Current speed set to: " .. TimeModifier .. "x", "Highlight")
     getgenv().alreadystarted = true
 else
-    Log("TAS Engine reloaded! (v65)", "System")
-    task.wait(0.15)
-    Log("Current speed set to: " .. TimeModifier .. "x", "Highlight")
+    Log("TAS Engine reloaded! (v65) - Current speed set to: " .. TimeModifier .. "x", "System")
 end
 
 -- // FE2 WATER DETECTION SYSTEM //
@@ -130,7 +125,7 @@ local function CacheWaterParts(MapFolder)
         end
         if #WaterParts == 0 then 
             attempts = attempts + 1
-            task.wait(0.5) 
+            RS.Heartbeat:Wait()
         end
     until #WaterParts > 0 or attempts > 10
     
@@ -167,7 +162,6 @@ local SuccessHook, Err = pcall(function()
     Animate = getsenv(AnimateScript)
     OriginalPlayAnim = Animate.playAnimation
     
-    -- Cache function globally so re-executions can restore it BEFORE capturing the empty dummy function
     getgenv().TAS_RestoreAnim = function()
         if Animate and OriginalPlayAnim then
             Animate.playAnimation = OriginalPlayAnim
@@ -264,7 +258,7 @@ local function Cleanup(resetCharacter)
                 end
                 
                 Remote:FireServer()
-                task.wait(0.5)
+                RS.Heartbeat:Wait()
             end
         end)
     end
@@ -276,7 +270,6 @@ if LP.Character and LP.Character:FindFirstChild("Humanoid") then
 end
 AddConnection(LP.CharacterRemoving:Connect(function() Cleanup(false) end))
 
-
 -- // SMART START LOGIC //
 local Map = nil
 
@@ -286,7 +279,7 @@ while not Map and not CleanedUp do
     
     -- Loop 1: Wait for you to step inside
     repeat
-        task.wait(0.2)
+        RS.Heartbeat:Wait()
         local Root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if Root then
             local Dist = (Root.Position - LiftCheckPos).Magnitude
@@ -299,7 +292,7 @@ while not Map and not CleanedUp do
     
     -- Loop 2: Wait for map, BUT constantly check if you leave the lift
     while ConditionsMet and not Map and not CleanedUp do
-        task.wait(0.1)
+        RS.Heartbeat:Wait()
         
         local FoundMap = Multi:FindFirstChild("NewMap")
         if FoundMap then 
@@ -307,14 +300,12 @@ while not Map and not CleanedUp do
             break 
         end
         
-        -- Check distance again to see if you left
         local Root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if Root then
             local Dist = (Root.Position - LiftCheckPos).Magnitude
-            -- If you are farther than 30 studs, but NOT teleported to a map (>800)
             if Dist > 30 and Dist < 800 then
                 Log("You left the lift! Pausing until you return.", "Warning")
-                ConditionsMet = false -- This breaks the loop and goes back to "Waiting..."
+                ConditionsMet = false 
             end
         end
     end
@@ -354,19 +345,41 @@ end
 
 local OriginalFrameCount = #TAS
 Log("Loaded run for " .. realMapName .. " (" .. OriginalFrameCount .. " frames).", "Info")
-repeat task.wait() until Map.Name == "Map" or CleanedUp
+
+repeat RS.Heartbeat:Wait() until Map.Name == "Map" or CleanedUp
 if CleanedUp then return end
 
+-- // HIGH-PERFORMANCE SPAWNPOINT DETECTION //
 local SpawnPoint = nil
-for _,v in ipairs(Map:GetChildren()) do
-    if v.Name == "Part" then
-        local c; c = v:GetPropertyChangedSignal("Rotation"):Connect(function() c:Disconnect(); SpawnPoint = v end)
+local tickStart = os.clock()
+local spawnConnections = {}
+
+for _, v in ipairs(Map:GetChildren()) do
+    if v.Name == "Part" and v:IsA("BasePart") then
+        local conn
+        conn = v:GetPropertyChangedSignal("Rotation"):Connect(function()
+            SpawnPoint = v
+            -- Once found, instantly disconnect all other listeners to prevent lag/leaks
+            for _, c in ipairs(spawnConnections) do c:Disconnect() end
+            table.clear(spawnConnections)
+        end)
+        table.insert(spawnConnections, conn)
     end
 end
 
-local t = 0
-repeat task.wait(0.1); t=t+0.1; if not SpawnPoint then SpawnPoint = Map:FindFirstChild("Spawn", true) end
-until SpawnPoint or t > 10 or CleanedUp
+-- Wait up to 10 seconds checking instantly via Heartbeat
+repeat 
+    if not SpawnPoint then 
+        SpawnPoint = Map:FindFirstChild("Spawn", true) 
+    end
+    if not SpawnPoint then 
+        RS.Heartbeat:Wait() 
+    end
+until SpawnPoint or (os.clock() - tickStart > 10) or CleanedUp
+
+-- Fallback cleanup in case it timed out or the player died
+for _, c in ipairs(spawnConnections) do c:Disconnect() end
+table.clear(spawnConnections)
 
 if not SpawnPoint then Log("Hmm, couldn't find where to spawn on this map.", "Error") Cleanup(true) return end
 
@@ -381,17 +394,14 @@ for _, v in next, Map:GetDescendants() do
         end)
     end
 end
-Log("Map buttons and elements processed.", "Success")
-
-task.wait(0.1)
-Log("Starting the run! Sit back and relax.", "Success")
+Log("Map buttons and elements processed. Starting the run!", "Success")
 
 local RootPart = LP.Character:WaitForChild("HumanoidRootPart", 10)
 local Humanoid = LP.Character:WaitForChild("Humanoid", 10)
 
 while (RootPart.Anchored == true) or (Humanoid.WalkSpeed <= 0) do
     if CleanedUp then return end
-    task.wait()
+    RS.Heartbeat:Wait()
 end
 
 if LP.Character and LP.Character:FindFirstChild("Humanoid") then
@@ -490,7 +500,6 @@ local function TogglePause()
         if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
         Log("Playback resumed!", "Success")
     elseif PauseRequested then
-        -- Cancel waiting if button pressed again
         PauseRequested = false
         if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
         Log("Pause request cancelled.", "Info")
@@ -568,10 +577,8 @@ MainLoop = RS.Heartbeat:Connect(function()
     local FA = TAS[OldFrame]
     local FB = TAS[OldFrame + 1] or FA
     
-    -- Smart Pause Verification Logic
     if PauseRequested then
         local anim = FA.AAnimation and FA.AAnimation[1]
-        -- Lock pause state once character naturally executes a ground animation
         if anim == "idle" or anim == "walk" or anim == "run" then
             PauseRequested = false
             IsPaused = true
@@ -596,7 +603,6 @@ MainLoop = RS.Heartbeat:Connect(function()
     if IsPaused then
         RootPart.Velocity = Vector3.zero
         RootPart.CFrame = TargetCFrame
-        -- Ensure player is hardlocked to idle visually while paused so it doesn't look weird
         if LastPlayedAnim ~= "idle" then
             pcall(function() OriginalPlayAnim("idle", 0.1, Humanoid) end)
             LastPlayedAnim = "idle"
