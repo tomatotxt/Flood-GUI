@@ -806,7 +806,6 @@ local function SetupMap()
     table.insert(Recorders, LiveMap.DescendantAdded:Connect(function(d) if d:IsA("BasePart") or d:IsA("Decal") or d:IsA("Texture") then TrackPart(d) end end))
 
     SendAlert("Scanning for Buttons...", Color3.fromRGB(255, 170, 0))
-    Hum.Health = 99999 -- God Mode
     
     local Buttons = {}
     for i, MapObject in pairs(LiveMap:GetDescendants()) do
@@ -921,11 +920,11 @@ local function SetupMap()
     MapX, MapY, MapZ = MapPos.X, MapPos.Y, MapPos.Z
     MapOffset = CFrame.new(MapX, MapY, MapZ)
     
-    LocalPlayer.Character.Health = 0
+    Char.Humanoid.Health = 0
     SendAlert("Respawning...", Color3.fromRGB(255, 255, 0))
-    LocalPlayer.CharacterAdded:Wait(); task.wait(1)
+    LocalPlayer.CharacterAdded:Wait(); Char = LocalPlayer.Character; task.wait(1)
     -- FE2CM method
-    LocalPlayer.Character.Health = 0
+    Char:BreakJoints();
     SendAlert("Double Respawning...", Color3.fromRGB(255, 255, 0))
     LocalPlayer.CharacterAdded:Wait(); Char = LocalPlayer.Character; task.wait(5)
     
