@@ -420,18 +420,6 @@ local ConnectMap
 
 local function OnMapLoad(Map)
     VerifyIntegrity()
-    
-    -- Quick Map Load Bypass
-    if LoadedMapRemote and _G.ServerPasskey then
-        pcall(function()
-            if LoadedMapRemote:IsA("RemoteEvent") then
-                LoadedMapRemote:FireServer(_G.ServerPasskey)
-            elseif LoadedMapRemote:IsA("RemoteFunction") then
-                LoadedMapRemote:InvokeServer(_G.ServerPasskey)
-            end
-        end)
-    end
-    
     CurrentlyFarming = true
     CurrentGoal = nil
     CurrentButton = nil
@@ -767,6 +755,22 @@ task.spawn(function()
             if _G.LoopCancel == false then
                 Alert("Autofarm resumed!", "Success")
             end
+        end
+    end
+end)
+
+-- Constant background calling loop for LoadedMap (Throttled to 30Hz, restricted to RemoteEvents)
+task.spawn(function()
+    while true do
+        task.wait(1/30)
+        if _G.LoopCancel == true then break end
+        
+        if getgenv().TomatoAutoFarm and UI_State.FarmActive and _G.ServerPasskey and LoadedMapRemote then
+            pcall(function()
+                if LoadedMapRemote:IsA("RemoteEvent") then
+                    LoadedMapRemote:FireServer(_G.ServerPasskey)
+                end
+            end)
         end
     end
 end)
