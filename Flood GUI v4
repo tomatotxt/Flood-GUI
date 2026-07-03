@@ -978,14 +978,14 @@ local function InitializeUI()
         Alert("Auto Rebirth " .. (state and "Enabled" or "Disabled"), state and "Success" or "Error")
     end)
     
-    mainSec:NewToggle("Enforce Difficulty Limiter", "Suicides to skip if map is too hard.", function(state)
-        State.EnforceDifficulty = state
-        Alert("Difficulty Limiter " .. (state and "Enabled" or "Disabled"), "Info")
-    end)
-
     mainSec:NewDropdown("Max Difficulty Level", "Skip maps harder than this.", {"None", "Crazy+", "Crazy", "Insane", "Hard", "Normal", "Easy"}, function(current)
         State.TargetDifficulty = current
         Alert("Max Difficulty set to: " .. current, "System")
+    end)
+
+    mainSec:NewToggle("Enforce Difficulty Limiter", "Suicides to skip if map is too hard.", function(state)
+        State.EnforceDifficulty = state
+        Alert("Difficulty Limiter " .. (state and "Enabled" or "Disabled"), "Info")
     end)
 
     -- === 3. LOCAL PLAYER TAB ===
