@@ -1,0 +1,783 @@
+--- START OF FILE Paste July 03, 2026 - 11:05AM ---
+
+-- ==============================================================================
+-- [GLOBAL CONSTANTS & PASSKEY CACHE] (Absolute Top Initialization)
+-- ==============================================================================
+_G.ReqRebirth = nil
+_G.ServerPasskey = nil
+
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
+-- Safe, fast polling loop (No WaitForChild) to guarantee replication
+local reqPassKey = RemoteFolder.ReqPasskey
+_G.ReqRebirth = RemoteFolder:FindFirstChild("ReqRebirth", true)
+    
+-- Cache the static server-wide passkey globally once
+_G.ServerPasskey = -reqPassKey:InvokeServer() 
+
+-- ==============================================================================
+-- [AUTHORSHIP INTEGRITY & PROTECTION] (Creator: tomatotxt on discord)
+-- ==============================================================================
+
+local CREATOR_TAG = "tomatotxt on discord"
+local DISCORD_INVITE = "discord.gg/8N2M9fHJqa"
+
+-- Global UI State Table (Directly bound to Kavo UI & Background Features)
+local UI_State = {
+    FarmActive = false,
+    NoclipActive = true,
+    GodModeActive = true,
+    AlertsEnabled = true,
+    TargetDifficulty = "Crazy+", -- Default Crazy+
+    EnforceDifficulty = false,
+    AutoRebirth = false,
+    ResetAfterEscape = false -- Default false
+}
+
+local ResettingForDifficulty = false
+local ExitPhaseActive = false -- Tracks if the exit phase has officially begun
+
+local function VerifyIntegrity()
+    local hash = 0
+    for i = 1, #CREATOR_TAG do
+        hash = hash + string.byte(CREATOR_TAG, i)
+    end
+    -- Byte sum validation for "tomatotxt on discord" (2041)
+    if hash ~= 2041 or CREATOR_TAG ~= "tomatotxt on discord" or not UI_State or typeof(UI_State) ~= "table" then
+        getgenv().TomatoAutoFarm = false
+        _G.LoopCancel = true
+        task.spawn(function()
+            while true do 
+                task.wait(9999) 
+            end
+        end)
+        error("Unauthorized Modification: UI elements or credits tampered with.")
+    end
+end
+
+-- Run initial verification
+VerifyIntegrity()
+
+-- ==============================================================================
+-- [SINGLE INSTANCE / OVERRIDE LOGIC] (Feature 5)
+-- ==============================================================================
+
+if getgenv().TomatoConnections then
+    print("!!! OVERRIDING PREVIOUS SCRIPT INSTANCE !!!")
+    for _, connection in pairs(getgenv().TomatoConnections) do
+        if connection then
+            pcall(function() connection:Disconnect() end)
+        end
+    end
+    _G.LoopCancel = true
+    getgenv().TomatoAutoFarm = false
+    task.wait(0.2)
+end
+
+getgenv().TomatoConnections = {}
+
+local function TrackConnection(connection)
+    table.insert(getgenv().TomatoConnections, connection)
+    return connection
+end
+
+getgenv().TomatoAutoFarm = true
+
+-- ==============================================================================
+-- [SETUP & LOCALS]
+-- ==============================================================================
+
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Multiplayer = Workspace:WaitForChild("Multiplayer")
+local Camera = Workspace.CurrentCamera
+
+-- Remotes
+local AddedWaiting = RemoteFolder:WaitForChild("AddedWaiting")
+local AlertRemote = RemoteFolder:WaitForChild("Alert")
+local PressedMapButton = RemoteFolder:FindFirstChild("PressedMapButton") or RemoteFolder:WaitForChild("PressedMapButton")
+local UpdGoalLocator = RemoteFolder:FindFirstChild("UpdGoalLocator") or RemoteFolder:WaitForChild("UpdGoalLocator")
+local SurvivedRemote = RemoteFolder:FindFirstChild("Survived") or RemoteFolder:WaitForChild("Survived")
+local LoadedMapRemote = RemoteFolder:FindFirstChild("LoadedMap")
+
+-- Persistent GodMode Connection to prevent connection stacking
+local CurrentGodModeConnection = nil
+
+-- Anti-AFK
+TrackConnection(LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end))
+
+-- Remote Alert Monitor (Server-side validation fallback)
+TrackConnection(AlertRemote.OnClientEvent:Connect(function(msg)
+    if type(msg) == "string" then
+        local textStr = msg:lower()
+        if textStr:find("escaped") or textStr:find("survived") then
+            if ExitPhaseActive then
+                Escaped = true
+            end
+        end
+    end
+end))
+
+-- ==============================================================================
+-- [KAVO UI SETUP & INTEGRATION] (Deeply Bound)
+-- ==============================================================================
+
+local Library = loadstring(game:HttpGet("https://github.com/tomatotxt/Kavo-UI-Library/raw/refs/heads/main/source.lua"))()
+local Window = Library.CreateLib("Quickest FE2 Autofarm | by tomatotxt", "Midnight")
+
+local MainTab = Window:NewTab("Autofarm")
+local MainSection = MainTab:NewSection("Autofarm Options")
+
+local CreditsTab = Window:NewTab("Credits")
+local CreditsSection = CreditsTab:NewSection("Information")
+
+-- Bind UI Toggles directly to core variables
+local FarmToggle = MainSection:NewToggle("Enable Autofarm", "Automatically beats maps", function(state)
+    UI_State.FarmActive = state
+    getgenv().TomatoAutoFarm = state
+end)
+
+local ResetToggle = MainSection:NewToggle("Reset after Escape", "Resets character 1s after escaping", function(state)
+    UI_State.ResetAfterEscape = state
+end)
+
+local RebirthToggle = MainSection:NewToggle("Auto Rebirth", "Automatically rebirths after escaping", function(state)
+    UI_State.AutoRebirth = state
+end)
+
+local LimiterToggle = MainSection:NewToggle("Enforce Difficulty Limiter", "Resets to skip maps exceeding max difficulty", function(state)
+    UI_State.EnforceDifficulty = state
+end)
+
+local DifficultyDropdown = MainSection:NewDropdown("Max Difficulty Level", "Skips maps harder than this choice", {"None", "Easy", "Normal", "Hard", "Insane", "Crazy", "Crazy+"}, function(current)
+    UI_State.TargetDifficulty = current
+end)
+
+CreditsSection:NewLabel("Creator: " .. CREATOR_TAG)
+CreditsSection:NewButton("Copy Discord Tag", "Copies creator name to clipboard", function()
+    if setclipboard then
+        setclipboard("tomatotxt")
+    end
+end)
+
+CreditsSection:NewLabel("Discord: " .. DISCORD_INVITE)
+CreditsSection:NewButton("Copy Discord Invite", "Copies support invite to clipboard", function()
+    if setclipboard then
+        setclipboard(DISCORD_INVITE)
+    end
+end)
+
+-- Enforcement check
+if typeof(Window) ~= "table" or typeof(MainSection) ~= "table" or typeof(CreditsSection) ~= "table" then
+    while true do task.wait(9999) end
+end
+
+-- Set UI defaults safely
+pcall(function()
+    if ResetToggle and ResetToggle.SetState then
+        ResetToggle:SetState(false) -- Default false
+    end
+end)
+
+-- ==============================================================================
+-- [ALERT SYSTEM & ENVIRONMENT HOOK]
+-- ==============================================================================
+
+local Colors = {
+    System  = Color3.fromRGB(200, 200, 200),
+    Success = Color3.fromRGB(0, 255, 127),
+    Warning = Color3.fromRGB(255, 170, 0),
+    Error   = Color3.fromRGB(255, 60, 60),
+    Info    = Color3.fromRGB(0, 220, 255),
+    Item    = Color3.fromRGB(170, 85, 255)
+}
+
+local CLMAIN = LocalPlayer.PlayerScripts:WaitForChild("CL_MAIN_GameScript")
+local CLMAINenv = getsenv(CLMAIN)
+local Alert
+local oldNewAlert
+
+-- Hook the native game UI alert function to capture local visual notifications
+if CLMAINenv and CLMAINenv.newAlert then
+    oldNewAlert = CLMAINenv.newAlert
+    CLMAINenv.newAlert = function(Text, ...)
+        local textStr = tostring(Text):lower()
+        if textStr:find("escape") or textStr:find("survive") or textStr:find("drown") then
+            if ExitPhaseActive then
+                Escaped = true
+            end
+        end
+        return oldNewAlert(Text, ...)
+    end
+end
+
+if oldNewAlert then
+    Alert = function(Text, ColorType)
+        if UI_State.AlertsEnabled then
+            VerifyIntegrity()
+            local SelectedColor = Colors[ColorType] or Colors.System
+            local Output = tostring(Text)
+            
+            pcall(function() 
+                oldNewAlert(Output, SelectedColor, nil, nil) 
+            end)
+            print("[TOMATOTXT] " .. Output)
+        end
+    end
+else
+    Alert = function(Text, ...)
+        VerifyIntegrity()
+        print("[TOMATOTXT] " .. tostring(Text))
+    end
+    print("Your executor does not support Alerts.")
+end
+
+local function GetChar()
+    return LocalPlayer.Character or (LocalPlayer.CharacterAdded:Wait() and LocalPlayer.Character)
+end
+
+-- Continuous Noclip via RunService to prevent physics-engine resets
+local NoclipConnection
+local function SetNoclip(Toggle)
+    if NoclipConnection then 
+        NoclipConnection:Disconnect() 
+        NoclipConnection = nil
+    end
+    
+    if Toggle and UI_State.NoclipActive then
+        NoclipConnection = RunService.Stepped:Connect(function()
+            local char = GetChar()
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+        TrackConnection(NoclipConnection)
+    else
+        local char = GetChar()
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+local function Check(Flag)
+    VerifyIntegrity()
+    local char = GetChar()
+    if not char then return false end
+    local HumanoidRootPart = char:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then return false end
+
+    if Flag == "InLift" then
+        if HumanoidRootPart.Position.X < 50 and HumanoidRootPart.Position.Z > 70 then
+            return true
+        end
+    elseif Flag == "InGame" then
+        if HumanoidRootPart.Position.X > 50 then
+            return true
+        end
+    end
+    return false
+end
+
+-- ==============================================================================
+-- [GOAL TRACKING & CACHED UPVALUE SCRAPER]
+-- ==============================================================================
+
+local CurrentGoal = nil
+local CurrentButton = nil
+local NextGoal = nil
+
+local DIFFICULTY_RANKS = {
+    ["None"] = 999, ["Easy"] = 1, ["Normal"] = 2, ["Hard"] = 3, ["Insane"] = 4, ["Crazy"] = 5, ["Crazy+"] = 6
+}
+
+-- Safely unpack values to find the actual underlying Instance
+local function ResolveToInstance(val)
+    if typeof(val) == "Instance" then
+        return val
+    elseif type(val) == "table" then
+        for _, item in pairs(val) do
+            local resolved = ResolveToInstance(item)
+            if resolved then
+                return resolved
+            end
+        end
+    end
+    return nil
+end
+
+-- Defensive debug environment extraction
+local debug_getupvalue = (debug and debug.getupvalue) or getupvalue
+local debug_setupvalue = debug.setupvalue or (debug and debug.setupvalue) or setupvalue
+
+-- Globally cached environment states
+local CachedUpdGameState = nil
+local CachedEscapeLockIndices = {}
+
+local function GetGameScriptState()
+    local env = CLMAINenv or getsenv(CLMAIN)
+    local updGameState = env and env.updGameState
+    if not updGameState or not debug_getupvalue then return nil, nil end
+
+    local booleanIndices = {}
+    -- Scan up to 150 upvalues dynamically to find boolean states
+    for i = 1, 150 do
+        local success, name, val = pcall(function() return debug_getupvalue(updGameState, i) end)
+        if not success or not name then break end
+        
+        -- Collect all boolean upvalues to bypass the "v29" lock dynamically
+        if type(val) == "boolean" then
+            table.insert(booleanIndices, i)
+        end
+    end
+    return updGameState, booleanIndices
+end
+
+local function CacheGameScriptState()
+    VerifyIntegrity()
+    local updGameState, booleanIndices = GetGameScriptState()
+    if updGameState then
+        CachedUpdGameState = updGameState
+        CachedEscapeLockIndices = booleanIndices
+    end
+end
+
+-- Listen to server updates for objectives and buttons
+TrackConnection(UpdGoalLocator.OnClientEvent:Connect(function(p1, p2, p3, p4, p5)
+    CurrentGoal = p1
+    CurrentButton = p2
+    NextGoal = p4
+end))
+
+local function GetTargetPart()
+    local goal = CurrentGoal
+    if not goal then return nil end
+    
+    if type(goal) == "table" then
+        local closestPart = nil
+        local minDistance = math.huge
+        local char = GetChar()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if hrp then
+            for _, part in pairs(goal) do
+                local resolved = ResolveToInstance(part)
+                if resolved and resolved:IsA("BasePart") then
+                    local offset = hrp.Position - resolved.Position
+                    local dist = offset.X * offset.X + offset.Y * offset.Y + offset.Z * offset.Z
+                    if dist < minDistance then
+                        minDistance = dist
+                        closestPart = resolved
+                    end
+                end
+            end
+        end
+        return closestPart
+    else
+        local resolved = ResolveToInstance(goal)
+        if resolved and resolved:IsA("BasePart") then
+            return resolved
+        end
+    end
+    return nil
+end
+
+local function GetCurrentMapDifficulty()
+    local success, result = pcall(function()
+        local lobby = Workspace:FindFirstChild("Lobby")
+        local gameInfo = lobby and lobby:FindFirstChild("GameInfo")
+        local surfaceGui = gameInfo and gameInfo:FindFirstChild("SurfaceGui")
+        local frame = surfaceGui and surfaceGui:FindFirstChild("Frame")
+        local difficultyLabel = frame and frame:FindFirstChild("Difficulty") and frame.Difficulty:FindFirstChild("Difficulty")
+        if difficultyLabel then
+            local text = difficultyLabel.Text
+            return text:split(":")[1]:gsub("^%s*(.-)%s*$", "%1")
+        end
+    end)
+    return success and result or nil
+end
+
+-- ==============================================================================
+-- [MAIN LOGIC]
+-- ==============================================================================
+
+local MapDetect
+local ConnectMap
+
+local function OnMapLoad(Map)
+    VerifyIntegrity()
+    
+    -- Quick Map Load Bypass
+    if LoadedMapRemote and _G.ServerPasskey then
+        pcall(function()
+            if LoadedMapRemote:IsA("RemoteEvent") then
+                LoadedMapRemote:FireServer(_G.ServerPasskey)
+            elseif LoadedMapRemote:IsA("RemoteFunction") then
+                LoadedMapRemote:InvokeServer(_G.ServerPasskey)
+            end
+        end)
+    end
+    
+    CurrentlyFarming = true
+    CurrentGoal = nil
+    CurrentButton = nil
+    NextGoal = nil
+    Escaped = false
+    ExitPhaseActive = false -- Explicitly disabled at map start
+    local alternate = false
+    
+    -- Safety timers for softlocks
+    local escapeTimer = nil
+    local buttonStuckTimer = nil
+    local lastButtonInstance = nil
+
+    -- Cache upvalue indexes once at map load
+    CacheGameScriptState()
+
+    local Settings = Map:WaitForChild("Settings", 10)
+    local MapName = Settings and Settings:GetAttribute("MapName") or Map.Name
+    
+    if Settings then
+        if MapName then 
+            Alert("Map Detected: " .. MapName .. ". Loading farm settings!", "Info") 
+        end
+    end
+
+    -- Process Difficulty Limiter Check
+    if UI_State.EnforceDifficulty then
+        local mapDiff = GetCurrentMapDifficulty()
+        local currentRank = DIFFICULTY_RANKS[mapDiff] or 0
+        local targetRank = DIFFICULTY_RANKS[UI_State.TargetDifficulty] or 999
+        
+        if currentRank > targetRank then
+            Alert("Map is too difficult (" .. tostring(mapDiff) .. "). Skipping...", "Error")
+            ResettingForDifficulty = true
+            task.wait(0.5)
+            local char = GetChar()
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Health = 0
+            end
+            CurrentlyFarming = false
+            return
+        end
+    end
+    
+    if Check("InGame") == false then
+        Alert("Waiting for the match to start...", "Warning")
+    end
+
+    local Humanoid = GetChar():WaitForChild("Humanoid")
+    
+    -- Manage the GodMode connection defensively to prevent stacking memory leaks
+    if CurrentGodModeConnection then
+        CurrentGodModeConnection:Disconnect()
+        CurrentGodModeConnection = nil
+    end
+
+    CurrentGodModeConnection = Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+        if UI_State.GodModeActive and Humanoid.Health < 1000 then
+            Humanoid.Health = 1000
+        end
+    end)
+    TrackConnection(CurrentGodModeConnection)
+    
+    local HRP = GetChar():WaitForChild("HumanoidRootPart", 10)
+    
+    -- Wait until deployed in-game and unanchored before taking action
+    while (not Check("InGame") or HRP.Anchored) and getgenv().TomatoAutoFarm and UI_State.FarmActive do
+        task.wait()
+    end
+    
+    local spawnCFrame = HRP and HRP.CFrame
+    
+    -- Auto Collect Items via Direct Teleportation (1-frame duration)
+    local LostPage = Map:FindFirstChild("_LostPage", true)
+    local Rescue = Map:FindFirstChild("_Rescue", true)
+    
+    if LostPage and HRP then
+        HRP.CFrame = CFrame.new(LostPage.Position)
+        task.wait()
+        HRP.CFrame = spawnCFrame
+        Alert("Hidden Page Acquired.", "Item")
+    end
+    
+    if Rescue and HRP then
+        local contact = Rescue:FindFirstChild("Contact", true) or Rescue:FindFirstChildWhichIsA("BasePart", true)
+        if contact then
+            HRP.CFrame = CFrame.new(contact.Position)
+            task.wait()
+            HRP.CFrame = spawnCFrame
+            Alert("Survivor Rescued.", "Item")
+        end
+    end
+    
+    SetNoclip(true)
+    Alert("Farming started! Navigating targets.", "Success")
+
+    while RunService.Heartbeat:Wait() and Check("InGame") and getgenv().TomatoAutoFarm and UI_State.FarmActive and not Escaped do
+        if not CurrentlyFarming or Escaped or not UI_State.FarmActive then break end
+
+        local Hum = GetChar():FindFirstChildOfClass("Humanoid")
+        if not HRP or not Hum then continue end
+
+        local activeButton = ResolveToInstance(CurrentButton)
+        local activeNextButton = ResolveToInstance(NextGoal)
+
+        local isButtonToPress = false
+        if activeButton and activeButton:IsA("BasePart") then
+            local nameLower = activeButton.Name:lower()
+            if not nameLower:find("exit") and not nameLower:find("region") then
+                isButtonToPress = true
+            end
+        end
+
+        local isNextButtonToPress = false
+        if activeNextButton and activeNextButton:IsA("BasePart") then
+            local nameLower = activeNextButton.Name:lower()
+            if not nameLower:find("exit") and not nameLower:find("region") then
+                isNextButtonToPress = true
+            end
+        end
+
+        local targetPart = nil
+        if isButtonToPress and isNextButtonToPress then
+            alternate = not alternate
+            if alternate then
+                targetPart = activeButton
+            else
+                targetPart = activeNextButton
+            end
+        elseif isButtonToPress then
+            targetPart = activeButton
+        elseif isNextButtonToPress then
+            targetPart = activeNextButton
+        else
+            targetPart = GetTargetPart()
+        end
+
+        if targetPart then
+            HRP.Anchored = false
+            
+            if Camera.CameraSubject ~= Hum then
+                Camera.CameraSubject = Hum
+            end
+
+            if Escaped then break end
+
+            HRP.CFrame = CFrame.new(targetPart.Position)
+            HRP.Velocity = Vector3.zero
+
+            if isButtonToPress or isNextButtonToPress then
+                escapeTimer = nil 
+                
+                if activeButton == lastButtonInstance then
+                    if not buttonStuckTimer then
+                        buttonStuckTimer = os.time()
+                    elseif os.time() - buttonStuckTimer > 15 then
+                        Alert("Stuck on group button/glitched button (>15s). Force resetting...", "Error")
+                        local char = GetChar()
+                        local humObj = char and char:FindFirstChildOfClass("Humanoid")
+                        if humObj then humObj.Health = 0 end
+                        break
+                    end
+                else
+                    lastButtonInstance = activeButton
+                    buttonStuckTimer = nil
+                end
+
+                if isButtonToPress then
+                    PressedMapButton:FireServer(activeButton)
+                end
+                if isNextButtonToPress then
+                    PressedMapButton:FireServer(activeNextButton)
+                end
+                task.wait()
+            else
+                -- == ESCAPE/EXIT PHASE ==
+                ExitPhaseActive = true -- Safely authorize exit alerts to process
+                buttonStuckTimer = nil 
+                
+                if not escapeTimer then
+                    escapeTimer = os.time()
+                elseif os.time() - escapeTimer > 10 then
+                    Alert("Escape phase exceeded 10 seconds! Force resetting character to prevent lock.", "Error")
+                    local char = GetChar()
+                    local humObj = char and char:FindFirstChildOfClass("Humanoid")
+                    if humObj then
+                        humObj.Health = 0
+                    end
+                    break
+                end
+
+                -- Handle Exit Region dynamically bypassing specific variable names
+                if CachedUpdGameState and debug_setupvalue then
+                    -- Unlock all boolean states (bypasses escape lock debounce dynamically)
+                    for _, idx in ipairs(CachedEscapeLockIndices) do
+                        pcall(debug_setupvalue, CachedUpdGameState, idx, false)
+                    end
+                    
+                    -- Fire the escape remote using the globally cached static passkey
+                    if _G.ServerPasskey then
+                        SurvivedRemote:FireServer(_G.ServerPasskey, 100)
+                    end
+                end
+                
+                task.wait()
+            end
+        else
+            task.wait()
+        end
+    end
+    
+    if Camera.CameraSubject ~= Humanoid then
+        Camera.CameraSubject = Humanoid
+    end
+    SetNoclip(false)
+    
+    if Escaped then
+        if spawnCFrame and HRP then
+            HRP.CFrame = spawnCFrame
+            HRP.Velocity = Vector3.zero
+        end
+        Alert("Escaped successfully! (Credit: tomatotxt on discord)", "Success")
+        
+        -- Auto Rebirth logic (Uses globally cached static passkey + static remote constant)
+        if UI_State.AutoRebirth then
+            if _G.ReqRebirth then
+                Alert("Attempting Auto Rebirth...", "Info")
+                
+                if _G.ServerPasskey then
+                    pcall(function()
+                        _G.ReqRebirth:FireServer(_G.ServerPasskey)
+                        Alert("Auto Rebirth request sent successfully!", "Success")
+                    end)
+                else
+                    Alert("Failed to attempt Auto Rebirth: Static passkey was not resolved at startup.", "Error")
+                end
+            else
+                Alert("Failed to attempt Auto Rebirth: Global Rebirth Remote missing.", "Warning")
+            end
+        end
+        
+        if UI_State.ResetAfterEscape then
+            task.wait(1)
+            local char = GetChar()
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.Health = 0
+            end
+        end
+    else
+        Alert("Map beat or terminated.", "Info")
+    end
+    
+    -- Only disconnect GodMode if ResetAfterEscape is set to true.
+    -- If false, your GodMode stays fully active in the lobby!
+    if CurrentGodModeConnection and UI_State.ResetAfterEscape then 
+        CurrentGodModeConnection:Disconnect() 
+        CurrentGodModeConnection = nil
+    end
+    
+    Alert("Waiting in lobby for the next round...", "System")
+    ExitPhaseActive = false -- Reset exit phase flag
+    CurrentlyFarming = false
+end
+
+-- ==============================================================================
+-- [INTERNAL] MAIN LOOP (Features 5 & 6)
+-- ==============================================================================
+
+ConnectMap = function()
+    MapDetect = Multiplayer.ChildAdded:Connect(function(NewMap)
+        NewMap:GetPropertyChangedSignal("Name"):Wait()
+        
+        if getgenv().TomatoAutoFarm == true then
+            OnMapLoad(NewMap)
+            Alert("Map Detected. Connecting...", "Info")
+        end
+    end)
+    TrackConnection(MapDetect)
+end
+
+if _G.LoopCancel ~= nil then
+    _G.LoopCancel = true
+    task.wait(.1)
+end
+_G.LoopCancel = false
+
+print([[
+=========================================================
+  TOMATOTXT FE2 AUTOFARM INITIALIZED
+  Developer: tomatotxt on discord
+  Status: Active
+=========================================================
+]])
+
+Alert("Cleaned up previous script instance.", "Error")
+
+task.spawn(function()
+    while task.wait(1) do
+        VerifyIntegrity()
+        if _G.LoopCancel == true then break end
+        
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local inLift = Check("InLift")
+            local inGame = Check("InGame")
+
+            if not inLift and not inGame and getgenv().TomatoAutoFarm and UI_State.FarmActive then
+                AddedWaiting:FireServer()
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        VerifyIntegrity()
+        if _G.LoopCancel == true then
+            if MapDetect then MapDetect:Disconnect() end
+            break
+        end
+        
+        if not MapDetect then
+            ConnectMap()
+        end
+
+        if getgenv().TomatoAutoFarm == false or not UI_State.FarmActive then
+            Alert("Autofarm paused.", "Warning")
+            repeat 
+                task.wait(0.5) 
+            until (getgenv().TomatoAutoFarm == true and UI_State.FarmActive) or _G.LoopCancel == true
+            
+            if _G.LoopCancel == false then
+                Alert("Autofarm resumed!", "Success")
+            end
+        end
+    end
+end)
+
+-- Re-enter lift queue automatically after resetting
+TrackConnection(LocalPlayer.CharacterAdded:Connect(function(char)
+    if ResettingForDifficulty then
+        char:WaitForChild("HumanoidRootPart", 10)
+        task.wait(0.5)
+        AddedWaiting:FireServer()
+        ResettingForDifficulty = false
+        Alert("Re-entered lift queue after map skip.", "Success")
+    end
+end))
