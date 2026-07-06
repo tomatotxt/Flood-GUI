@@ -843,8 +843,14 @@ TrackConnection(RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
-        if hum.WalkSpeed ~= State.WalkSpeed then hum.WalkSpeed = State.WalkSpeed end
-        if hum.JumpPower ~= State.JumpPower then hum.JumpPower = State.JumpPower end
+        -- [FIX APPLIED HERE]
+        -- 1. `not getgenv().IsTASPlaying`: Completely stops the GUI from messing with movement if TAS is active.
+        -- 2. `hum.WalkSpeed > 0`: Allows the GUI to respect the Map's 0 WalkSpeed cooldown.
+        if not getgenv().IsTASPlaying and hum.WalkSpeed > 0 then
+            if hum.WalkSpeed ~= State.WalkSpeed then hum.WalkSpeed = State.WalkSpeed end
+            if hum.JumpPower ~= State.JumpPower then hum.JumpPower = State.JumpPower end
+        end
+        
         if State.GodMode then
             hum.MaxHealth = 100000
             hum.Health = 100000
