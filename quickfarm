@@ -1,11 +1,23 @@
---- START OF FILE Paste July 03, 2026 - 11:05AM ---
+-- ==============================================================================
+-- [GLOBAL SAFEGUARDS & GETCONNECTIONS PATCH] (Absolute Top Priority)
+-- ==============================================================================
+local raw_getconnections = getconnections or get_signal_cons
+if raw_getconnections then
+    local safe_getconnections = function(signal)
+        if typeof(signal) ~= "RBXScriptSignal" then
+            return {} -- Return empty table to prevent crashes in iteration loops
+        end
+        return raw_getconnections(signal)
+    end
+    getconnections = safe_getconnections
+    get_signal_cons = safe_getconnections
+end
 
 -- ==============================================================================
--- [GLOBAL CONSTANTS & PASSKEY CACHE] (Absolute Top Initialization)
+-- [GLOBAL CONSTANTS & PASSKEY CACHE]
 -- ==============================================================================
 _G.ReqRebirth = nil
 _G.ServerPasskey = nil
-
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
@@ -27,16 +39,21 @@ local DISCORD_INVITE = "discord.gg/8N2M9fHJqa"
 local UI_State = {
     FarmActive = false,
     NoclipActive = true,
-    GodModeActive = true,
+    GodModeActive = false,
     AlertsEnabled = true,
     TargetDifficulty = "Crazy+", -- Default Crazy+
     EnforceDifficulty = false,
     AutoRebirth = false,
-    ResetAfterEscape = false -- Default false
+    ResetAfterEscape = false, -- Default false
+    StartDelay = 0, -- Default delay is 0 seconds
+    ResetDelay = 0, -- Default delay is 0 seconds
+    CycleChallenges = false, -- Default false
+    AutoBoost = false -- Default false
 }
 
 local ResettingForDifficulty = false
 local ExitPhaseActive = false -- Tracks if the exit phase has officially begun
+local DelayOverrideInGame = false -- Overrides game state check when waiting in the lobby coordinates
 
 local function VerifyIntegrity()
     local hash = 0
@@ -60,7 +77,7 @@ end
 VerifyIntegrity()
 
 -- ==============================================================================
--- [SINGLE INSTANCE / OVERRIDE LOGIC] (Feature 5)
+-- [SINGLE INSTANCE / OVERRIDE LOGIC]
 -- ==============================================================================
 
 if getgenv().TomatoConnections then
@@ -82,7 +99,7 @@ local function TrackConnection(connection)
     return connection
 end
 
-getgenv().TomatoAutoFarm = true
+getgenv().TomatoAutoFarm = false
 
 -- ==============================================================================
 -- [SETUP & LOCALS]
@@ -103,9 +120,6 @@ local UpdGoalLocator = RemoteFolder:FindFirstChild("UpdGoalLocator") or RemoteFo
 local SurvivedRemote = RemoteFolder:FindFirstChild("Survived") or RemoteFolder:WaitForChild("Survived")
 local LoadedMapRemote = RemoteFolder:FindFirstChild("LoadedMap")
 
--- Persistent GodMode Connection to prevent connection stacking
-local CurrentGodModeConnection = nil
-
 -- Anti-AFK
 TrackConnection(LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
@@ -125,40 +139,87 @@ TrackConnection(AlertRemote.OnClientEvent:Connect(function(msg)
 end))
 
 -- ==============================================================================
--- [KAVO UI SETUP & INTEGRATION] (Deeply Bound)
+-- [KAVO UI SETUP & INTEGRATION] (Tab-Separated Interface)
 -- ==============================================================================
 
 local Library = loadstring(game:HttpGet("https://github.com/tomatotxt/Kavo-UI-Library/raw/refs/heads/main/source.lua"))()
 local Window = Library.CreateLib("Quickest FE2 Autofarm | by tomatotxt", "Midnight")
 
-local MainTab = Window:NewTab("Autofarm")
-local MainSection = MainTab:NewSection("Autofarm Options")
-
+-- Tabs
+local AutofarmTab = Window:NewTab("Autofarm")
+local MapTab = Window:NewTab("Map / Difficulty")
+local BoostTab = Window:NewTab("Boosts")
 local CreditsTab = Window:NewTab("Credits")
+
+-- Sections
+local CoreSection = AutofarmTab:NewSection("Core Controls")
+local DelaySection = AutofarmTab:NewSection("Delays & Resets")
+
+local DifficultySection = MapTab:NewSection("Difficulty Limiter")
+local ServerSection = MapTab:NewSection("Server Controls")
+
+local BoostSection = BoostTab:NewSection("Boost Settings")
+
 local CreditsSection = CreditsTab:NewSection("Information")
 
--- Bind UI Toggles directly to core variables
-local FarmToggle = MainSection:NewToggle("Enable Autofarm", "Automatically beats maps", function(state)
+-- Tab 1: Autofarm
+local FarmToggle = CoreSection:NewToggle("Enable Autofarm", "Automatically beats maps", function(state)
     UI_State.FarmActive = state
     getgenv().TomatoAutoFarm = state
 end)
 
-local ResetToggle = MainSection:NewToggle("Reset after Escape", "Resets character 1s after escaping", function(state)
-    UI_State.ResetAfterEscape = state
+local GodModeToggle = CoreSection:NewToggle("Enable God Mode", "Keeps health at 1000 when active", function(state)
+    UI_State.GodModeActive = state
 end)
 
-local RebirthToggle = MainSection:NewToggle("Auto Rebirth", "Automatically rebirths after escaping", function(state)
+local RebirthToggle = CoreSection:NewToggle("Auto Rebirth", "Automatically rebirths after escaping", function(state)
     UI_State.AutoRebirth = state
 end)
 
-local LimiterToggle = MainSection:NewToggle("Enforce Difficulty Limiter", "Resets to skip maps exceeding max difficulty", function(state)
+local DelaySlider = DelaySection:NewSlider("Autofarm Start Delay", "Delays button pressing after map load (seconds)", 30, 0, function(value)
+    UI_State.StartDelay = value
+end)
+
+local ResetToggle = DelaySection:NewToggle("Reset after Escape", "Resets character after escaping", function(state)
+    UI_State.ResetAfterEscape = state
+end)
+
+local ResetDelaySlider = DelaySection:NewSlider("Reset Delay", "Delays character reset after escaping (seconds)", 10, 0, function(value)
+    UI_State.ResetDelay = value
+end)
+
+-- Tab 2: Map / Difficulty
+local LimiterToggle = DifficultySection:NewToggle("Enforce Difficulty Limiter", "Resets to skip maps exceeding max difficulty", function(state)
     UI_State.EnforceDifficulty = state
 end)
 
-local DifficultyDropdown = MainSection:NewDropdown("Max Difficulty Level", "Skips maps harder than this choice", {"None", "Easy", "Normal", "Hard", "Insane", "Crazy", "Crazy+"}, function(current)
+local DifficultyDropdown = DifficultySection:NewDropdown("Max Difficulty Level", "Skips maps harder than this choice", {"None", "Easy", "Normal", "Hard", "Insane", "Crazy", "Crazy+"}, function(current)
     UI_State.TargetDifficulty = current
 end)
 
+local CycleChallengesToggle = ServerSection:NewToggle("Cycle Challenges", "Cycles challenges every 10 minutes", function(state)
+    UI_State.CycleChallenges = state
+end)
+
+-- Tab 3: Boosts
+local AutoBoostToggle = BoostSection:NewToggle("Auto Boost (20 Gems)", "Automatically sends full boosts at round start", function(state)
+    UI_State.AutoBoost = state
+end)
+
+local BoostButton = BoostSection:NewButton("Manual Full Boost (20 gems)", "Sends one-time manual boost requests", function()
+    local BoostIntensity = game:GetService("ReplicatedStorage").Remote:FindFirstChild("BoostIntensity")
+    if BoostIntensity then
+        for i = 1, 4 do
+            task.spawn(function()
+                BoostIntensity:FireServer(5)
+            end)
+        end
+    else
+        warn("BoostIntensity remote not found in ReplicatedStorage.Remote")
+    end
+end)
+
+-- Tab 4: Credits
 CreditsSection:NewLabel("Creator: " .. CREATOR_TAG)
 CreditsSection:NewButton("Copy Discord Tag", "Copies creator name to clipboard", function()
     if setclipboard then
@@ -174,14 +235,23 @@ CreditsSection:NewButton("Copy Discord Invite", "Copies support invite to clipbo
 end)
 
 -- Enforcement check
-if typeof(Window) ~= "table" or typeof(MainSection) ~= "table" or typeof(CreditsSection) ~= "table" then
+if typeof(Window) ~= "table" or typeof(CoreSection) ~= "table" or typeof(CreditsSection) ~= "table" then
     while true do task.wait(9999) end
 end
 
 -- Set UI defaults safely
 pcall(function()
+    if FarmToggle and FarmToggle.SetState then
+        FarmToggle:SetState(false)
+    end
+    if GodModeToggle and GodModeToggle.SetState then
+        GodModeToggle:SetState(false)
+    end
     if ResetToggle and ResetToggle.SetState then
-        ResetToggle:SetState(false) -- Default false
+        ResetToggle:SetState(false)
+    end
+    if AutoBoostToggle and AutoBoostToggle.SetState then
+        AutoBoostToggle:SetState(false)
     end
 end)
 
@@ -286,6 +356,10 @@ local function Check(Flag)
             return true
         end
     elseif Flag == "InGame" then
+        -- Override validation check while waiting in lobby coordinates
+        if DelayOverrideInGame then
+            return true
+        end
         if HumanoidRootPart.Position.X > 50 then
             return true
         end
@@ -412,6 +486,24 @@ local function GetCurrentMapDifficulty()
 end
 
 -- ==============================================================================
+-- [BOOST TRIGGER]
+-- ==============================================================================
+
+local function TriggerAutoBoost()
+    local BoostIntensity = game:GetService("ReplicatedStorage").Remote:FindFirstChild("BoostIntensity")
+    if BoostIntensity then
+        for i = 1, 4 do
+            task.spawn(function()
+                BoostIntensity:FireServer(5)
+            end)
+        end
+        Alert("Full Auto-Boost sent (20 gems)!", "Success")
+    else
+        warn("BoostIntensity remote not found in ReplicatedStorage.Remote")
+    end
+end
+
+-- ==============================================================================
 -- [MAIN LOGIC]
 -- ==============================================================================
 
@@ -430,8 +522,6 @@ local function OnMapLoad(Map)
     
     -- Safety timers for softlocks
     local escapeTimer = nil
-    local buttonStuckTimer = nil
-    local lastButtonInstance = nil
 
     -- Cache upvalue indexes once at map load
     CacheGameScriptState()
@@ -470,20 +560,6 @@ local function OnMapLoad(Map)
     end
 
     local Humanoid = GetChar():WaitForChild("Humanoid")
-    
-    -- Manage the GodMode connection defensively to prevent stacking memory leaks
-    if CurrentGodModeConnection then
-        CurrentGodModeConnection:Disconnect()
-        CurrentGodModeConnection = nil
-    end
-
-    CurrentGodModeConnection = Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-        if UI_State.GodModeActive and Humanoid.Health < 1000 then
-            Humanoid.Health = 1000
-        end
-    end)
-    TrackConnection(CurrentGodModeConnection)
-    
     local HRP = GetChar():WaitForChild("HumanoidRootPart", 10)
     
     -- Wait until deployed in-game and unanchored before taking action
@@ -516,6 +592,21 @@ local function OnMapLoad(Map)
     
     SetNoclip(true)
     Alert("Farming started! Navigating targets.", "Success")
+
+    -- Teleport once to lobby coordinates right when round starts
+    if UI_State.StartDelay > 0 then
+        if HRP then
+            HRP.CFrame = CFrame.new(-25, -144, 139)
+            HRP.Velocity = Vector3.zero
+        end
+        DelayOverrideInGame = true
+        Alert("Delaying navigation for " .. tostring(UI_State.StartDelay) .. " seconds...", "Warning")
+        local remainingDelay = UI_State.StartDelay
+        while remainingDelay > 0 and getgenv().TomatoAutoFarm and UI_State.FarmActive and not Escaped do
+            task.wait(0.1)
+            remainingDelay = remainingDelay - 0.1
+        end
+    end
 
     while RunService.Heartbeat:Wait() and Check("InGame") and getgenv().TomatoAutoFarm and UI_State.FarmActive and not Escaped do
         if not CurrentlyFarming or Escaped or not UI_State.FarmActive then break end
@@ -567,27 +658,21 @@ local function OnMapLoad(Map)
 
             if Escaped then break end
 
-            HRP.CFrame = CFrame.new(targetPart.Position)
+            local targetPos = targetPart.Position
+            if isButtonToPress or isNextButtonToPress then
+                targetPos = targetPos
+            end
+
+            HRP.CFrame = CFrame.new(targetPos)
             HRP.Velocity = Vector3.zero
+
+            -- Revert state override immediately when character is teleported to first active target
+            DelayOverrideInGame = false
 
             if isButtonToPress or isNextButtonToPress then
                 escapeTimer = nil 
-                
-                if activeButton == lastButtonInstance then
-                    if not buttonStuckTimer then
-                        buttonStuckTimer = os.time()
-                    elseif os.time() - buttonStuckTimer > 15 then
-                        Alert("Stuck on group button/glitched button (>15s). Force resetting...", "Error")
-                        local char = GetChar()
-                        local humObj = char and char:FindFirstChildOfClass("Humanoid")
-                        if humObj then humObj.Health = 0 end
-                        break
-                    end
-                else
-                    lastButtonInstance = activeButton
-                    buttonStuckTimer = nil
-                end
 
+                -- Single calls to activate the button targets
                 if isButtonToPress then
                     PressedMapButton:FireServer(activeButton)
                 end
@@ -598,7 +683,6 @@ local function OnMapLoad(Map)
             else
                 -- == ESCAPE/EXIT PHASE ==
                 ExitPhaseActive = true -- Safely authorize exit alerts to process
-                buttonStuckTimer = nil 
                 
                 if not escapeTimer then
                     escapeTimer = os.time()
@@ -638,8 +722,15 @@ local function OnMapLoad(Map)
     SetNoclip(false)
     
     if Escaped then
-        if spawnCFrame and HRP then
-            HRP.CFrame = spawnCFrame
+        if HRP then
+            if UI_State.ResetAfterEscape then
+                if spawnCFrame then
+                    HRP.CFrame = spawnCFrame
+                end
+            else
+                -- Instantly teleport to designated coordinates when reset is disabled
+                HRP.CFrame = CFrame.new(-25, -144, 139)
+            end
             HRP.Velocity = Vector3.zero
         end
         Alert("Escaped successfully! (Credit: tomatotxt on discord)", "Success")
@@ -663,7 +754,7 @@ local function OnMapLoad(Map)
         end
         
         if UI_State.ResetAfterEscape then
-            task.wait(1)
+            task.wait(UI_State.ResetDelay or 0)
             local char = GetChar()
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             if hum then
@@ -674,26 +765,25 @@ local function OnMapLoad(Map)
         Alert("Map beat or terminated.", "Info")
     end
     
-    -- Only disconnect GodMode if ResetAfterEscape is set to true.
-    -- If false, your GodMode stays fully active in the lobby!
-    if CurrentGodModeConnection and UI_State.ResetAfterEscape then 
-        CurrentGodModeConnection:Disconnect() 
-        CurrentGodModeConnection = nil
-    end
-    
     Alert("Waiting in lobby for the next round...", "System")
     ExitPhaseActive = false -- Reset exit phase flag
+    DelayOverrideInGame = false -- Standard safety reset
     CurrentlyFarming = false
 end
 
 -- ==============================================================================
--- [INTERNAL] MAIN LOOP (Features 5 & 6)
+-- [INTERNAL] MAIN LOOP
 -- ==============================================================================
 
 ConnectMap = function()
     MapDetect = Multiplayer.ChildAdded:Connect(function(NewMap)
         NewMap:GetPropertyChangedSignal("Name"):Wait()
         
+        -- Trigger Auto Boost at round start if setting is enabled, independent of Autofarm state
+        if UI_State.AutoBoost then
+            task.spawn(TriggerAutoBoost)
+        end
+
         if getgenv().TomatoAutoFarm == true then
             OnMapLoad(NewMap)
             Alert("Map Detected. Connecting...", "Info")
@@ -759,10 +849,10 @@ task.spawn(function()
     end
 end)
 
--- Constant background calling loop for LoadedMap (Throttled to 30Hz, restricted to RemoteEvents)
+-- Constant background calling loop for LoadedMap (Throttled to 4Hz / every 0.25 seconds)
 task.spawn(function()
     while true do
-        task.wait(1/30)
+        task.wait(0.25)
         if _G.LoopCancel == true then break end
         
         if getgenv().TomatoAutoFarm and UI_State.FarmActive and _G.ServerPasskey and LoadedMapRemote then
@@ -771,6 +861,33 @@ task.spawn(function()
                     LoadedMapRemote:FireServer(_G.ServerPasskey)
                 end
             end)
+        end
+    end
+end)
+
+-- Background loop for cycling daily challenges (Throttled to run every 10 minutes when enabled)
+task.spawn(function()
+    local lastCycle = 0
+    while true do
+        task.wait(1)
+        if _G.LoopCancel == true then break end
+        
+        if UI_State.CycleChallenges then
+            local now = os.time()
+            if now - lastCycle >= 600 then
+                local CycleRemote = RemoteFolder:FindFirstChild("CycleNewChallenges")
+                if CycleRemote then
+                    pcall(function()
+                        CycleRemote:FireServer()
+                        Alert("Daily challenges cycled successfully.", "Success")
+                    end)
+                    lastCycle = now
+                else
+                    Alert("CycleNewChallenges remote not found.", "Warning")
+                    -- Prevent spamming notifications by skipping timer
+                    lastCycle = now
+                end
+            end
         end
     end
 end)
@@ -785,3 +902,22 @@ TrackConnection(LocalPlayer.CharacterAdded:Connect(function(char)
         Alert("Re-entered lift queue after map skip.", "Success")
     end
 end))
+
+-- Global God Mode Character Hook
+local function HookGodMode(character)
+    if not character then return end
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if humanoid then
+        local conn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            if UI_State.GodModeActive and humanoid.Health < 1000 then
+                humanoid.Health = 1000
+            end
+        end)
+        TrackConnection(conn)
+    end
+end
+
+TrackConnection(LocalPlayer.CharacterAdded:Connect(HookGodMode))
+if LocalPlayer.Character then
+    task.spawn(HookGodMode, LocalPlayer.Character)
+end
