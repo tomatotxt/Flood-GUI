@@ -1,3 +1,5 @@
+-- START OF FILE Paste July 16, 2026 - 7:49PM --
+
 -- ==============================================================================
 -- [GLOBAL SAFEGUARDS & GETCONNECTIONS PATCH] (Absolute Top Priority)
 -- ==============================================================================
@@ -48,12 +50,14 @@ local UI_State = {
     StartDelay = 0, -- Default delay is 0 seconds
     ResetDelay = 0, -- Default delay is 0 seconds
     CycleChallenges = false, -- Default false
-    AutoBoost = false -- Default false
+    AutoBoost = false, -- Default false
+    AutoChallenge = false -- Default false
 }
 
 local ResettingForDifficulty = false
 local ExitPhaseActive = false -- Tracks if the exit phase has officially begun
 local DelayOverrideInGame = false -- Overrides game state check when waiting in the lobby coordinates
+local ResettingCharacter = false -- Bypasses God Mode during manual resets
 
 local function VerifyIntegrity()
     local hash = 0
@@ -119,6 +123,7 @@ local PressedMapButton = RemoteFolder:FindFirstChild("PressedMapButton") or Remo
 local UpdGoalLocator = RemoteFolder:FindFirstChild("UpdGoalLocator") or RemoteFolder:WaitForChild("UpdGoalLocator")
 local SurvivedRemote = RemoteFolder:FindFirstChild("Survived") or RemoteFolder:WaitForChild("Survived")
 local LoadedMapRemote = RemoteFolder:FindFirstChild("LoadedMap")
+local UpdPlayerData = RemoteFolder:FindFirstChild("UpdPlayerData") or RemoteFolder:WaitForChild("UpdPlayerData")
 
 -- Anti-AFK
 TrackConnection(LocalPlayer.Idled:Connect(function()
@@ -197,7 +202,11 @@ local DifficultyDropdown = DifficultySection:NewDropdown("Max Difficulty Level",
     UI_State.TargetDifficulty = current
 end)
 
-local CycleChallengesToggle = ServerSection:NewToggle("Cycle Challenges", "Cycles challenges every 10 minutes", function(state)
+local AutoChallengeToggle = ServerSection:NewToggle("Auto-Challenge Manager", "Cycles only when remaining challenges are impossible", function(state)
+    UI_State.AutoChallenge = state
+end)
+
+local CycleChallengesToggle = ServerSection:NewToggle("Cycle Challenges (10 Min Blind)", "Backup blind cycling loop", function(state)
     UI_State.CycleChallenges = state
 end)
 
@@ -252,6 +261,9 @@ pcall(function()
     end
     if AutoBoostToggle and AutoBoostToggle.SetState then
         AutoBoostToggle:SetState(false)
+    end
+    if AutoChallengeToggle and AutoChallengeToggle.SetState then
+        AutoChallengeToggle:SetState(false)
     end
 end)
 
@@ -310,6 +322,18 @@ end
 
 local function GetChar()
     return LocalPlayer.Character or (LocalPlayer.CharacterAdded:Wait() and LocalPlayer.Character)
+end
+
+-- Centralized and safe reset logic that bypasses God Mode
+local function SafeResetCharacter()
+    ResettingCharacter = true
+    pcall(function()
+        local char = GetChar()
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Health = 0
+        end
+    end)
 end
 
 -- Continuous Noclip via RunService to prevent physics-engine resets
@@ -545,11 +569,7 @@ local function OnMapLoad(Map)
             Alert("Map is too difficult (" .. tostring(mapDiff) .. "). Skipping...", "Error")
             ResettingForDifficulty = true
             task.wait(0.5)
-            local char = GetChar()
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.Health = 0
-            end
+            SafeResetCharacter()
             CurrentlyFarming = false
             return
         end
@@ -688,11 +708,7 @@ local function OnMapLoad(Map)
                     escapeTimer = os.time()
                 elseif os.time() - escapeTimer > 10 then
                     Alert("Escape phase exceeded 10 seconds! Force resetting character to prevent lock.", "Error")
-                    local char = GetChar()
-                    local humObj = char and char:FindFirstChildOfClass("Humanoid")
-                    if humObj then
-                        humObj.Health = 0
-                    end
+                    SafeResetCharacter()
                     break
                 end
 
@@ -755,11 +771,7 @@ local function OnMapLoad(Map)
         
         if UI_State.ResetAfterEscape then
             task.wait(UI_State.ResetDelay or 0)
-            local char = GetChar()
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.Health = 0
-            end
+            SafeResetCharacter()
         end
     else
         Alert("Map beat or terminated.", "Info")
@@ -894,6 +906,7 @@ end)
 
 -- Re-enter lift queue automatically after resetting
 TrackConnection(LocalPlayer.CharacterAdded:Connect(function(char)
+    ResettingCharacter = false -- Reset the bypass flag immediately when a new character loads
     if ResettingForDifficulty then
         char:WaitForChild("HumanoidRootPart", 10)
         task.wait(0.5)
@@ -909,7 +922,7 @@ local function HookGodMode(character)
     local humanoid = character:WaitForChild("Humanoid", 10)
     if humanoid then
         local conn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-            if UI_State.GodModeActive and humanoid.Health < 1000 then
+            if UI_State.GodModeActive and not ResettingCharacter and humanoid.Health < 1000 then
                 humanoid.Health = 1000
             end
         end)
@@ -921,3 +934,147 @@ TrackConnection(LocalPlayer.CharacterAdded:Connect(HookGodMode))
 if LocalPlayer.Character then
     task.spawn(HookGodMode, LocalPlayer.Character)
 end
+
+-- ==============================================================================
+-- [AUTO-CHALLENGE SYSTEM LOGIC]
+-- ==============================================================================
+
+local IMPOSSIBLE_PATTERNS = {
+    "slide under",
+    "walljump",
+    "zipline",
+    "without pressing",
+    "air bubble",
+    "regenerate air",
+    "vote multiple times",
+    "exploding button"
+}
+
+local PlayerCoins = 0
+local ActiveChallenges = nil
+
+TrackConnection(UpdPlayerData.OnClientEvent:Connect(function(p1)
+    if p1 then
+        if p1.dailyChallenges then
+            ActiveChallenges = p1.dailyChallenges
+        end
+        if p1.stats and p1.stats.coins then
+            PlayerCoins = p1.stats.coins
+        end
+    end
+end))
+
+task.spawn(function()
+    local lastCycleTime = 0
+    while true do
+        task.wait(2)
+        if _G.LoopCancel == true then break end
+        
+        if UI_State.AutoChallenge and ActiveChallenges then
+            local standardList = ActiveChallenges.standard or {}
+            local masterList = ActiveChallenges.master or {}
+            
+            local incompleteStandards = {}
+            local incompleteMasters = {}
+            
+            -- 1. Gather all incomplete standard challenges
+            for _, chal in pairs(standardList) do
+                local isCompleted = chal.completed == true or (chal.amtCurrent >= chal.amtRequired)
+                if not isCompleted then
+                    table.insert(incompleteStandards, chal)
+                end
+            end
+            
+            -- 2. Gather all incomplete master challenges
+            for _, chal in pairs(masterList) do
+                local isCompleted = chal.completed == true or (chal.amtCurrent >= chal.amtRequired)
+                if not isCompleted then
+                    table.insert(incompleteMasters, chal)
+                end
+            end
+            
+            local totalIncomplete = #incompleteStandards + #incompleteMasters
+            
+            if totalIncomplete > 0 then
+                -- 3. Evaluate standard challenges for impossibility
+                local standardImpossibleCount = 0
+                for _, chal in ipairs(incompleteStandards) do
+                    local descLower = chal.desc:lower()
+                    
+                    -- Check Roblox Premium limitation
+                    local isPremiumLocked = (chal.isPremium == true) and (LocalPlayer.MembershipType ~= Enum.MembershipType.Premium)
+                    local isImpossible = isPremiumLocked
+                    
+                    if not isImpossible then
+                        for _, pattern in ipairs(IMPOSSIBLE_PATTERNS) do
+                            if descLower:find(pattern) then
+                                isImpossible = true
+                                break
+                            end
+                        end
+                    end
+                    
+                    if isImpossible then
+                        standardImpossibleCount = standardImpossibleCount + 1
+                    end
+                end
+                
+                local allStandardsAreImpossible = (#incompleteStandards > 0) and (standardImpossibleCount == #incompleteStandards)
+                
+                -- 4. Evaluate master challenges for impossibility
+                local masterImpossibleCount = 0
+                for _, chal in ipairs(incompleteMasters) do
+                    local descLower = chal.desc:lower()
+                    
+                    -- Check Roblox Premium limitation
+                    local isPremiumLocked = (chal.isPremium == true) and (LocalPlayer.MembershipType ~= Enum.MembershipType.Premium)
+                    local isImpossible = isPremiumLocked
+                    
+                    if not isImpossible then
+                        -- Direct match check
+                        for _, pattern in ipairs(IMPOSSIBLE_PATTERNS) do
+                            if descLower:find(pattern) then
+                                isImpossible = true
+                                break
+                            end
+                        end
+                        
+                        -- Dependency check: If it relies on standard challenges, but all standards are deadlocked/impossible
+                        if not isImpossible and descLower:find("standard challenges") then
+                            if allStandardsAreImpossible or #incompleteStandards == 0 then
+                                isImpossible = true
+                            end
+                        end
+                    end
+                    
+                    if isImpossible then
+                        masterImpossibleCount = masterImpossibleCount + 1
+                    end
+                end
+                
+                -- 5. Calculate global impossibility
+                local totalImpossible = standardImpossibleCount + masterImpossibleCount
+                
+                if totalImpossible == totalIncomplete then
+                    local now = os.time()
+                    if now - lastCycleTime >= 10 then
+                        if PlayerCoins >= 50 then
+                            local CycleRemote = RemoteFolder:FindFirstChild("CycleNewChallenges")
+                            if CycleRemote then
+                                pcall(function()
+                                    CycleRemote:FireServer()
+                                    Alert("All active challenges are impossible or deadlocked. Cycling...", "Warning")
+                                end)
+                                lastCycleTime = now
+                            end
+                        else
+                            Alert("Cannot cycle challenges: Insufficient coins (needs 50).", "Error")
+                            -- Prevent printing on every single tick
+                            lastCycleTime = now + 10 
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
