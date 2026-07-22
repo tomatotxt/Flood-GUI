@@ -1,18 +1,13 @@
 local TimeModifier = 1 -- [CONTROL SPEED HERE] (1 = Normal, 0.5 = 2x Speed, 2 = Slow Motion)
 local DynamicTimeScale = 1 -- [MAP EVENT MODIFIER] Dynamically scales speed mid-game
-local SmoothnessFactor = 0.15 -- [ROTATION SMOOTHING] Lower = Smoother, Higher = Snappier (0.1-0.2 recommended)
+local SwimSmoothness = 0.04 -- [SWIMMING ROTATION SMOOTHING] Lower = Smoother, Higher = Snappier (0.01 - 0.1 recommended)
 
-print("Welcome to the TAS Player! (V65) - Auto-Queue & Smooth Movements Active")
+print("Welcome to the TAS Player! (V65) - Auto-Queue Active")
 
 -- // GLOBAL CLEANUP //
 if getgenv().TAS_RestoreAnim then
     pcall(getgenv().TAS_RestoreAnim)
     getgenv().TAS_RestoreAnim = nil
-end
-
-if getgenv().TAS_MobileUI then
-    pcall(function() getgenv().TAS_MobileUI:Destroy() end)
-    getgenv().TAS_MobileUI = nil
 end
 
 if getgenv().TASConnections then
@@ -104,7 +99,7 @@ end)
 if not getgenv().alreadystarted then
     Log("Welcome to the TAS Engine! (v65)", "System")
     task.wait(0.1)
-    Log("Smooth movements enabled.", "System")
+    Log("TAS Engine initialized.", "System")
     task.wait(0.1)
     Log("Current speed set to: " .. TimeModifier .. "x", "Highlight")
     getgenv().alreadystarted = true
@@ -214,6 +209,15 @@ if not getgenv().TASHookApplied then
     end)
 end
 
+-- // SLIDING & ZIPLINE CONFIGURATION //
+local LastPlayedAnim = nil
+local IsSliding = false
+local SlideStartTime = 0
+local LastSlideEndTime = -3.0
+local SLIDE_DEBOUNCE = 3.0
+local IsCurrentlySwimming = false
+local IsCurrentlyZiplining = false
+
 -- // CLEANUP & AUTO-QUEUE //
 local LiftCheckPos = Vector3.new(-25, -144, 139)
 local CleanedUp = false
@@ -221,6 +225,12 @@ local function Cleanup(resetCharacter)
     if CleanedUp then return end
     CleanedUp = true
     getgenv().IsTASPlaying = false
+    
+    -- Reset state variables on cleanup
+    IsSliding = false
+    SlideStartTime = 0
+    LastSlideEndTime = -3.0
+    IsCurrentlyZiplining = false
     
     if getgenv().TASConnections then
         for _, connection in pairs(getgenv().TASConnections) do
@@ -232,11 +242,6 @@ local function Cleanup(resetCharacter)
     if getgenv().TAS_RestoreAnim then
         pcall(getgenv().TAS_RestoreAnim)
         getgenv().TAS_RestoreAnim = nil
-    end
-
-    if getgenv().TAS_MobileUI then
-        pcall(function() getgenv().TAS_MobileUI:Destroy() end)
-        getgenv().TAS_MobileUI = nil
     end
 
     if LP.Character then
@@ -400,49 +405,121 @@ end
 
 Animate.playAnimation = function() end
 
-local LastPlayedAnim = nil
-local IsSliding = false
-local LastSlideTime = 0
-local MinSlideTime = 0.3
-local IsCurrentlySwimming = false
-
 local function activateAnimation(AnimData, Elapsed)
-    if not AnimData then return end
     local character = LP.Character
     if not character or not character.Parent then return end
     local head = character:FindFirstChild("Head")
     local humanoid = character:FindFirstChild("Humanoid")
     if not head or not humanoid or not RootPart then return end
 
-    local n = AnimData[1]
-    local animTime = AnimData[2] or 0.1
+    -- Safe fallbacks for missing/nil AnimData values
+    local n = AnimData and AnimData[1] or nil
+    local animTime = AnimData and AnimData[2] or 0.1
     Elapsed = Elapsed or 0
 
     local checkSubmerged = IsInWater(RootPart.Position + Vector3.new(0, 1, 0))
-    if checkSubmerged then
-        IsCurrentlySwimming = true
-        if RootPart.Velocity.Magnitude > 1.5 then n = "swim" else n = "swimidle" end
-        if character.Animate:FindFirstChild("ToggleSwim") then
-            pcall(function() character.Animate.ToggleSwim:Fire(true) end)
+
+    -- Native-Derived Scaling Slide Duration
+    local gameSpeedMultiplier = TimeModifier * DynamicTimeScale
+    local nativeSlideDuration = 0.5 / gameSpeedMultiplier
+
+    -- Zipline Priority State Manager (Highest Priority, Overrides Slide)
+    if n == "zipline" then
+        IsCurrentlyZiplining = true
+        if IsSliding then
+            toggleSlide(false)
+            IsSliding = false
+            LastSlideEndTime = Elapsed
+        end
+    end
+
+    -- Exit zipline state strictly when landing on solid ground
+    if humanoid.FloorMaterial ~= Enum.Material.Air then
+        IsCurrentlyZiplining = false
+    end
+
+    -- 1. ABSOLUTE PRIORITY SLIDE LOCK (Guarantees exactly nativeSlideDuration, unless overridden by Zipline)
+    if IsSliding then
+        if Elapsed - SlideStartTime >= nativeSlideDuration then
+            toggleSlide(false)
+            IsSliding = false
+            LastSlideEndTime = Elapsed
+            -- Safely transition to correct post-slide state
+            if checkSubmerged then
+                IsCurrentlySwimming = true
+                if character.Animate:FindFirstChild("ToggleSwim") then
+                    pcall(function() character.Animate.ToggleSwim:Fire(true) end)
+                end
+                if RootPart.Velocity.Magnitude > 1.5 then n = "swim" else n = "swimidle" end
+            else
+                IsCurrentlySwimming = false
+                if character.Animate:FindFirstChild("ToggleSwim") then
+                    pcall(function() character.Animate.ToggleSwim:Fire(false) end)
+                end
+                if humanoid.FloorMaterial == Enum.Material.Air then
+                    n = "fall"
+                elseif RootPart.Velocity.Magnitude > 1 then
+                    n = "walk"
+                else
+                    n = "idle"
+                end
+            end
+        else
+            n = "slide"
         end
     else
-        IsCurrentlySwimming = false
-        if character.Animate:FindFirstChild("ToggleSwim") then
-            pcall(function() character.Animate.ToggleSwim:Fire(false) end)
-        end
-        if humanoid:GetState() == Enum.HumanoidStateType.Physics then n = "swing" end
-        if n == "idle" then
-            if RootPart.Velocity.Magnitude > 1 then
-                if humanoid.FloorMaterial ~= Enum.Material.Air then n = "walk" else n = "fall" end
+        -- 2. NORMAL ENVIRONMENT & PHYSICS STATES (When not sliding)
+        if checkSubmerged then
+            IsCurrentlySwimming = true
+            if RootPart.Velocity.Magnitude > 1.5 then n = "swim" else n = "swimidle" end
+            if character.Animate:FindFirstChild("ToggleSwim") then
+                pcall(function() character.Animate.ToggleSwim:Fire(true) end)
             end
-        end
-        if n == "fall" and RootPart.Velocity.Magnitude < 0.1 then n = "swing" end
-        if n == "slide" then
-            if not IsSliding then toggleSlide(true) IsSliding = true LastSlideTime = Elapsed end
-        elseif IsSliding then
-            if (Elapsed - LastSlideTime >= MinSlideTime) or n == "swing" or n == "fall" or n == "zipline" then
-                toggleSlide(false) IsSliding = false
-            else n = "slide" end
+        else
+            IsCurrentlySwimming = false
+            if character.Animate:FindFirstChild("ToggleSwim") then
+                pcall(function() character.Animate.ToggleSwim:Fire(false) end)
+            end
+
+            if not IsCurrentlyZiplining then
+                if n == "slide" then
+                    -- Only allow slide initiation if debounce is cleared, Y velocity is stable, AND grounded
+                    local absYVel = math.abs(RootPart.Velocity.Y)
+                    if Elapsed - LastSlideEndTime >= SLIDE_DEBOUNCE and absYVel <= 3 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                        toggleSlide(true)
+                        IsSliding = true
+                        SlideStartTime = Elapsed
+                        n = "slide"
+                    else
+                        -- Debounce active, vertical velocity outside limits, or in air; fallback
+                        if humanoid.FloorMaterial == Enum.Material.Air then
+                            n = "fall"
+                        elseif RootPart.Velocity.Magnitude > 1 then
+                            n = "walk"
+                        else
+                            n = "idle"
+                        end
+                    end
+                end
+            end
+
+            -- PASSIVE EXIT: If there is no new animation data and we are NOT sliding, do not override
+            if not AnimData and not IsSliding then
+                return
+            end
+
+            -- General physics/movement fallbacks
+            if not IsSliding and not IsCurrentlyZiplining then
+                if humanoid:GetState() == Enum.HumanoidStateType.Physics then n = "swing" end
+                if n == "idle" or not n then
+                    if RootPart.Velocity.Magnitude > 1 then
+                        if humanoid.FloorMaterial ~= Enum.Material.Air then n = "walk" else n = "fall" end
+                    else
+                        n = "idle"
+                    end
+                end
+                if n == "fall" and RootPart.Velocity.Magnitude < 0.1 then n = "swing" end
+            end
         end
     end
 
@@ -454,68 +531,13 @@ local function activateAnimation(AnimData, Elapsed)
     end
 end
 
--- // UI & PAUSING SYSTEM SETUP //
-local IsPaused = false
-local PauseRequested = false
-
-local MobileUI = Instance.new("ScreenGui")
-MobileUI.Name = "TAS_MobileUI"
-MobileUI.ResetOnSpawn = false
-getgenv().TAS_MobileUI = MobileUI
-
-local successUI, _ = pcall(function()
-    MobileUI.Parent = game:GetService("CoreGui")
-end)
-if not successUI then
-    MobileUI.Parent = LP:WaitForChild("PlayerGui")
-end
-
-local PauseBtn = Instance.new("TextButton")
-PauseBtn.Size = UDim2.new(0, 160, 0, 50)
-PauseBtn.Position = UDim2.new(1, -180, 0.5, 0)
-PauseBtn.AnchorPoint = Vector2.new(0, 0.5)
-PauseBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-PauseBtn.BorderColor3 = Theme.Highlight
-PauseBtn.BorderSizePixel = 2
-PauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-PauseBtn.Font = Enum.Font.GothamBold
-PauseBtn.TextSize = 14
-PauseBtn.Text = "Pause TAS (P)"
-PauseBtn.Parent = MobileUI
-
-local function TogglePause()
-    if IsPaused then
-        IsPaused = false
-        PauseRequested = false
-        if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
-        Log("Playback resumed!", "Success")
-    elseif PauseRequested then
-        -- Cancel waiting if button pressed again
-        PauseRequested = false
-        if PauseBtn then PauseBtn.Text = "Pause TAS (P)" end
-        Log("Pause request cancelled.", "Info")
-    else
-        PauseRequested = true
-        if PauseBtn then PauseBtn.Text = "Waiting for Ground..." end
-        Log("Pause requested! Waiting for ground...", "Warning")
-    end
-end
-
-AddConnection(game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.P then
-        TogglePause()
-    end
-end))
-
-AddConnection(PauseBtn.MouseButton1Click:Connect(function()
-    TogglePause()
-end))
-
 local Offset = SpawnPoint.Position - NewV(0, 1000, 0)
 local OldFrame = 3
 local RenderedFrames = 0
 local FinishedRun = false
+
+-- // SLIDING TRACKING VARIABLES //
+local SmoothSwimDirection = nil
 
 -- // PHYSICS LOOP SETUP //
 local VisualElapsed = 0
@@ -538,9 +560,7 @@ MainLoop = RS.Heartbeat:Connect(function()
     local Delta = CurrentClock - LastClock
     LastClock = CurrentClock
     
-    if not IsPaused then
-        VisualElapsed = VisualElapsed + (Delta * (1 / (TimeModifier * DynamicTimeScale)))
-    end
+    VisualElapsed = VisualElapsed + (Delta * (1 / (TimeModifier * DynamicTimeScale)))
     
     local liveWeld = RootPart:FindFirstChild("WalljumpWeld_Live")
     if liveWeld then liveWeld:Destroy() end
@@ -568,48 +588,65 @@ MainLoop = RS.Heartbeat:Connect(function()
     local FA = TAS[OldFrame]
     local FB = TAS[OldFrame + 1] or FA
     
-    -- Smart Pause Verification Logic
-    if PauseRequested then
-        local anim = FA.AAnimation and FA.AAnimation[1]
-        -- Lock pause state once character naturally executes a ground animation
-        if anim == "idle" or anim == "walk" or anim == "run" then
-            PauseRequested = false
-            IsPaused = true
-            if PauseBtn then PauseBtn.Text = "Resume TAS (P)" end
-            Log("Playback paused! Locked to idle.", "Success")
-        end
-    end
-    
     local Dur = FB.time - FA.time
     local Alpha = (Dur > 0) and math.clamp((VisualElapsed - FA.time) / Dur, 0, 1) or 0
 
     local cfA = NewC(FA.CCFrame[1], FA.CCFrame[2], FA.CCFrame[3]) * AngC(FA.CCFrame[4], FA.CCFrame[5], FA.CCFrame[6])
     local cfB = NewC(FB.CCFrame[1], FB.CCFrame[2], FB.CCFrame[3]) * AngC(FB.CCFrame[4], FB.CCFrame[5], FB.CCFrame[6])
+    
     local vA = NewV(FA.VVelocity[1], FA.VVelocity[2], FA.VVelocity[3])
     local vB = NewV(FB.VVelocity[1], FB.VVelocity[2], FB.VVelocity[3])
 
+    -- High frame rate interpolation between frames
     local TargetVelocity = vA:Lerp(vB, Alpha)
     getgenv().TASCurrentMoveDir = TargetVelocity.Magnitude > 0 and TargetVelocity.Unit or Vector3.zero
 
     local TargetCFrame = cfA:Lerp(cfB, Alpha) + Offset
     
-    if IsPaused then
-        RootPart.Velocity = Vector3.zero
-        RootPart.CFrame = TargetCFrame
-        -- Ensure player is hardlocked to idle visually while paused so it doesn't look weird
-        if LastPlayedAnim ~= "idle" then
-            pcall(function() OriginalPlayAnim("idle", 0.1, Humanoid) end)
-            LastPlayedAnim = "idle"
+    -- Lax Physical "Legs in ground" Detection (Head-Level Cast)
+    local OverrideToSlide = false
+    local startPos = TargetCFrame.Position + Vector3.new(0, 1.5, 0) -- Starts exactly at head level to clear floor geometry and avoid roof hits
+    local direction = Vector3.new(0, -4.5, 0) -- Projects downward past the feet
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = { LP.Character }
+    
+    local result = workspace:Raycast(startPos, direction, raycastParams)
+    if result then
+        local hitY = result.Position.Y
+        local gap = TargetCFrame.Position.Y - hitY
+        
+        -- High-sensitivity gap threshold. Trigger only if legs are sinking and character is grounded (not in mid-air).
+        if gap < 1.7 and Humanoid.FloorMaterial ~= Enum.Material.Air then
+            -- Verify vertical velocity corresponds with sliding physics.
+            if TargetVelocity.Y <= 3 then
+                OverrideToSlide = true
+            end
         end
-    else
-        RootPart.Velocity = TargetVelocity
-        if IsCurrentlySwimming and TargetVelocity.Magnitude > 0.5 then
-            local LookAtCFrame = NewC(TargetCFrame.Position, TargetCFrame.Position + TargetVelocity.Unit)
-            RootPart.CFrame = RootPart.CFrame:Lerp(LookAtCFrame, SmoothnessFactor)
-        else
-            RootPart.CFrame = TargetCFrame
-        end
-        pcall(activateAnimation, FA.AAnimation, VisualElapsed)
     end
+
+    -- Swimming Rotation Smoothing vs Raw Foot Movement application
+    if IsCurrentlySwimming and TargetVelocity.Magnitude > 0.5 then
+        if not SmoothSwimDirection then
+            SmoothSwimDirection = TargetVelocity.Unit
+        else
+            SmoothSwimDirection = SmoothSwimDirection:Lerp(TargetVelocity.Unit, SwimSmoothness).Unit
+        end
+        RootPart.CFrame = NewC(TargetCFrame.Position, TargetCFrame.Position + SmoothSwimDirection)
+    else
+        SmoothSwimDirection = nil -- Reset when not swimming or stationary
+        RootPart.CFrame = TargetCFrame
+    end
+    
+    RootPart.Velocity = TargetVelocity
+
+    local AnimData = FA.AAnimation
+    -- Block heuristic slide overrides if we are currently ziplining or if the animation is explicitly a zipline
+    if OverrideToSlide and not IsCurrentlyZiplining and (not AnimData or AnimData[1] ~= "zipline") then
+        AnimData = { "slide", 0.1 }
+    end
+
+    pcall(activateAnimation, AnimData, VisualElapsed)
 end)
 AddConnection(MainLoop)
