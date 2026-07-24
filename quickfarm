@@ -1,4 +1,4 @@
--- START OF FILE Paste July 24, 2026 - 1:28PM --
+-- START OF FILE Paste July 24, 2026 - 1:54PM --
 
 -- START OF FILE Paste July 16, 2026 - 7:49PM --
 
@@ -42,7 +42,8 @@ local DISCORD_INVITE = "discord.gg/8N2M9fHJqa"
 -- Global UI State Table (Directly bound to Kavo UI & Background Features)
 local UI_State = {
     FarmActive = false,
-    FastLoad = false, -- Fast Load Feature Added
+    FastLoad = false,
+    PlayAfterButtons = false, -- NEW: Presses buttons, then teleports to spawn without escaping
     NoclipActive = true,
     GodModeActive = false,
     AlertsEnabled = true,
@@ -191,7 +192,7 @@ if CLMAIN then
 end
 
 -- ==============================================================================
--- [KAVO UI SETUP & INTEGRATION] (Tab-Separated Interface)
+-- [KAVO UI SETUP & REORGANIZED STRUCTURE]
 -- ==============================================================================
 
 local Library = loadstring(game:HttpGet("https://github.com/tomatotxt/Kavo-UI-Library/raw/refs/heads/main/source.lua"))()
@@ -199,22 +200,24 @@ local Window = Library.CreateLib("Quickest FE2 Autofarm | by tomatotxt", "Midnig
 
 -- Tabs
 local AutofarmTab = Window:NewTab("Autofarm")
-local MapTab = Window:NewTab("Map / Difficulty")
+local MapTab = Window:NewTab("Map / Challenges")
 local BoostTab = Window:NewTab("Boosts")
 local CreditsTab = Window:NewTab("Credits")
 
 -- Sections
-local CoreSection = AutofarmTab:NewSection("Core Controls")
-local DelaySection = AutofarmTab:NewSection("Delays & Resets")
+local CoreSection = AutofarmTab:NewSection("Automation Controls")
+local ModeSection = AutofarmTab:NewSection("Manual Play Mode")
+local SafeguardsSection = AutofarmTab:NewSection("Safeguards & Delays")
 
 local DifficultySection = MapTab:NewSection("Difficulty Limiter")
-local ServerSection = MapTab:NewSection("Server Controls")
+local ServerSection = MapTab:NewSection("Challenge Manager")
 
 local BoostSection = BoostTab:NewSection("Boost Settings")
-
 local CreditsSection = CreditsTab:NewSection("Information")
 
--- Tab 1: Autofarm
+-- ------------------------------------------------------------------------------
+-- Tab 1: Autofarm Controls
+-- ------------------------------------------------------------------------------
 local FarmToggle = CoreSection:NewToggle("Enable Autofarm", "Automatically beats maps", function(state)
     UI_State.FarmActive = state
     getgenv().TomatoAutoFarm = state
@@ -228,23 +231,31 @@ local GodModeToggle = CoreSection:NewToggle("Enable God Mode", "Keeps health at 
     UI_State.GodModeActive = state
 end)
 
-local RebirthToggle = CoreSection:NewToggle("Auto Rebirth", "Automatically rebirths after escaping", function(state)
+-- Mode Options
+local PlayAfterButtonsToggle = ModeSection:NewToggle("Play after Buttons (No Escape)", "Presses all buttons then teleports to spawn without escaping", function(state)
+    UI_State.PlayAfterButtons = state
+end)
+
+local RebirthToggle = ModeSection:NewToggle("Auto Rebirth", "Automatically rebirths after escaping", function(state)
     UI_State.AutoRebirth = state
 end)
 
-local DelaySlider = DelaySection:NewSlider("Autofarm Start Delay", "Delays button pressing after map load (seconds)", 30, 0, function(value)
-    UI_State.StartDelay = value
-end)
-
-local ResetToggle = DelaySection:NewToggle("Reset after Escape", "Resets character after escaping", function(state)
+local ResetToggle = ModeSection:NewToggle("Reset after Escape", "Resets character after escaping", function(state)
     UI_State.ResetAfterEscape = state
 end)
 
-local ResetDelaySlider = DelaySection:NewSlider("Reset Delay", "Delays character reset after escaping (seconds)", 10, 0, function(value)
+-- Safeguards & Delays
+local DelaySlider = SafeguardsSection:NewSlider("Autofarm Start Delay", "Delays button pressing after map load (seconds)", 30, 0, function(value)
+    UI_State.StartDelay = value
+end)
+
+local ResetDelaySlider = SafeguardsSection:NewSlider("Reset Delay", "Delays character reset after escaping (seconds)", 10, 0, function(value)
     UI_State.ResetDelay = value
 end)
 
--- Tab 2: Map / Difficulty
+-- ------------------------------------------------------------------------------
+-- Tab 2: Map & Challenges
+-- ------------------------------------------------------------------------------
 local LimiterToggle = DifficultySection:NewToggle("Enforce Difficulty Limiter", "Resets to skip maps exceeding max difficulty", function(state)
     UI_State.EnforceDifficulty = state
 end)
@@ -261,7 +272,9 @@ local CycleChallengesToggle = ServerSection:NewToggle("Cycle Challenges (10 Min 
     UI_State.CycleChallenges = state
 end)
 
--- Tab 3: Boosts
+-- ------------------------------------------------------------------------------
+-- Tab 3: Boost Settings
+-- ------------------------------------------------------------------------------
 local AutoBoostToggle = BoostSection:NewToggle("Auto Boost (20 Gems)", "Automatically sends full boosts at round start", function(state)
     UI_State.AutoBoost = state
 end)
@@ -279,7 +292,9 @@ local BoostButton = BoostSection:NewButton("Manual Full Boost (20 gems)", "Sends
     end
 end)
 
--- Tab 4: Credits
+-- ------------------------------------------------------------------------------
+-- Tab 4: Credits & Socials
+-- ------------------------------------------------------------------------------
 CreditsSection:NewLabel("Creator: " .. CREATOR_TAG)
 CreditsSection:NewButton("Copy Discord Tag", "Copies creator name to clipboard", function()
     if setclipboard then
@@ -301,24 +316,13 @@ end
 
 -- Set UI defaults safely
 pcall(function()
-    if FarmToggle and FarmToggle.SetState then
-        FarmToggle:SetState(false)
-    end
-    if FastLoadToggle and FastLoadToggle.SetState then
-        FastLoadToggle:SetState(false)
-    end
-    if GodModeToggle and GodModeToggle.SetState then
-        GodModeToggle:SetState(false)
-    end
-    if ResetToggle and ResetToggle.SetState then
-        ResetToggle:SetState(false)
-    end
-    if AutoBoostToggle and AutoBoostToggle.SetState then
-        AutoBoostToggle:SetState(false)
-    end
-    if AutoChallengeToggle and AutoChallengeToggle.SetState then
-        AutoChallengeToggle:SetState(false)
-    end
+    if FarmToggle and FarmToggle.SetState then FarmToggle:SetState(false) end
+    if FastLoadToggle and FastLoadToggle.SetState then FastLoadToggle:SetState(false) end
+    if PlayAfterButtonsToggle and PlayAfterButtonsToggle.SetState then PlayAfterButtonsToggle:SetState(false) end
+    if GodModeToggle and GodModeToggle.SetState then GodModeToggle:SetState(false) end
+    if ResetToggle and ResetToggle.SetState then ResetToggle:SetState(false) end
+    if AutoBoostToggle and AutoBoostToggle.SetState then AutoBoostToggle:SetState(false) end
+    if AutoChallengeToggle and AutoChallengeToggle.SetState then AutoChallengeToggle:SetState(false) end
 end)
 
 -- ==============================================================================
@@ -640,7 +644,9 @@ local function OnMapLoad(Map)
         task.wait()
     end
     
+    -- PRESERVE EXACT MAP SPAWN CFRAME (POSITION + ROTATION) & CAMERA CFRAME
     local spawnCFrame = HRP and HRP.CFrame
+    local spawnCamCFrame = Camera and Camera.CFrame
     
     -- Auto Collect Items via Direct Teleportation (1-frame duration)
     local LostPage = Map:FindFirstChild("_LostPage", true)
@@ -754,7 +760,32 @@ local function OnMapLoad(Map)
                 end
                 task.wait()
             else
-                -- == ESCAPE/EXIT PHASE ==
+                -- ==============================================================
+                -- [ALL BUTTONS PRESSED -> CHECK PLAY AFTER BUTTONS]
+                -- ==============================================================
+                if UI_State.PlayAfterButtons then
+                    Alert("All buttons pressed! Returning to spawn for manual play...", "Success")
+                    
+                    -- Restore Exact Spawn CFrame (Position + Facing Rotation)
+                    if HRP and spawnCFrame then
+                        HRP.CFrame = spawnCFrame
+                        HRP.Velocity = Vector3.zero
+                    end
+                    
+                    -- Restore Exact Spawn Camera Perspective
+                    if Camera and spawnCamCFrame then
+                        Camera.CameraType = Enum.CameraType.Custom
+                        Camera.CameraSubject = Humanoid
+                        Camera.CFrame = spawnCamCFrame
+                    end
+
+                    -- Turn off noclip so physical walking/collisions work
+                    SetNoclip(false)
+                    CurrentlyFarming = false
+                    break -- Stop autofarm loop instantly without firing SurvivedRemote!
+                end
+
+                -- == STANDARD ESCAPE/EXIT PHASE ==
                 ExitPhaseActive = true -- Safely authorize exit alerts to process
                 
                 if not escapeTimer then
@@ -765,14 +796,12 @@ local function OnMapLoad(Map)
                     break
                 end
 
-                -- Handle Exit Region dynamically bypassing specific variable names
+                -- Handle Exit Region dynamically
                 if CachedUpdGameState and debug_setupvalue then
-                    -- Unlock all boolean states (bypasses escape lock debounce dynamically)
                     for _, idx in ipairs(CachedEscapeLockIndices) do
                         pcall(debug_setupvalue, CachedUpdGameState, idx, false)
                     end
                     
-                    -- Fire the escape remote using the globally cached static passkey
                     if _G.ServerPasskey then
                         SurvivedRemote:FireServer(_G.ServerPasskey, 100)
                     end
@@ -784,50 +813,55 @@ local function OnMapLoad(Map)
             task.wait()
         end
     end
-    
-    if Camera.CameraSubject ~= Humanoid then
-        Camera.CameraSubject = Humanoid
-    end
+
+    -- Disable noclip so physical collision works
     SetNoclip(false)
     
+    ------------------------------------------------------------------------------
+    -- [POST-ESCAPE / COMPLETED MAP HANDLING]
+    ------------------------------------------------------------------------------
     if Escaped then
         if HRP then
             if UI_State.ResetAfterEscape then
                 if spawnCFrame then
                     HRP.CFrame = spawnCFrame
                 end
+                HRP.Velocity = Vector3.zero
+                Alert("Escaped successfully! Resetting soon...", "Success")
             else
-                -- Instantly teleport to designated coordinates when reset is disabled
+                -- Instantly teleport to lobby coordinates when reset is disabled
                 HRP.CFrame = CFrame.new(-25, -144, 139)
+                HRP.Velocity = Vector3.zero
+                Alert("Escaped successfully! (Credit: tomatotxt on discord)", "Success")
             end
-            HRP.Velocity = Vector3.zero
         end
-        Alert("Escaped successfully! (Credit: tomatotxt on discord)", "Success")
         
-        -- Auto Rebirth logic (Uses globally cached static passkey + static remote constant)
+        -- Auto Rebirth logic
         if UI_State.AutoRebirth then
             if _G.ReqRebirth then
                 Alert("Attempting Auto Rebirth...", "Info")
-                
                 if _G.ServerPasskey then
                     pcall(function()
                         _G.ReqRebirth:FireServer(_G.ServerPasskey)
                         Alert("Auto Rebirth request sent successfully!", "Success")
                     end)
                 else
-                    Alert("Failed to attempt Auto Rebirth: Static passkey was not resolved at startup.", "Error")
+                    Alert("Failed Auto Rebirth: Static passkey missing.", "Error")
                 end
             else
-                Alert("Failed to attempt Auto Rebirth: Global Rebirth Remote missing.", "Warning")
+                Alert("Failed Auto Rebirth: Rebirth Remote missing.", "Warning")
             end
         end
         
+        -- Trigger character reset if ResetAfterEscape is ON
         if UI_State.ResetAfterEscape then
             task.wait(UI_State.ResetDelay or 0)
             SafeResetCharacter()
         end
     else
-        Alert("Map beat or terminated.", "Info")
+        if not UI_State.PlayAfterButtons then
+            Alert("Map beat or terminated.", "Info")
+        end
     end
     
     Alert("Waiting in lobby for the next round...", "System")
