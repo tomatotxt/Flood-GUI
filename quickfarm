@@ -1,3 +1,5 @@
+-- START OF FILE Paste July 24, 2026 - 1:28PM --
+
 -- START OF FILE Paste July 16, 2026 - 7:49PM --
 
 -- ==============================================================================
@@ -40,6 +42,7 @@ local DISCORD_INVITE = "discord.gg/8N2M9fHJqa"
 -- Global UI State Table (Directly bound to Kavo UI & Background Features)
 local UI_State = {
     FarmActive = false,
+    FastLoad = false, -- Fast Load Feature Added
     NoclipActive = true,
     GodModeActive = false,
     AlertsEnabled = true,
@@ -144,6 +147,50 @@ TrackConnection(AlertRemote.OnClientEvent:Connect(function(msg)
 end))
 
 -- ==============================================================================
+-- [FAST LOAD HOOK INTEGRATION]
+-- ==============================================================================
+
+local getupvalue = debug.getupvalue or getupvalue
+local hookfunction = hookfunction or replaceclosure
+
+local CLMAIN = LocalPlayer.PlayerScripts:WaitForChild("CL_MAIN_GameScript", 10)
+if CLMAIN then
+    local CLMAINenv = getsenv(CLMAIN)
+    if CLMAINenv and CLMAINenv.updGameState then
+        local orig_updGameState
+        orig_updGameState = hookfunction(CLMAINenv.updGameState, function(newState, mapData, mapIndex)
+            if newState == "loading" and UI_State.FastLoad then
+                if type(mapData) == "table" then
+                    mapData.assetCount = 1
+                end
+
+                -- Hide loading screen UI completely
+                local loadingUI = getupvalue(orig_updGameState, 16)
+                if loadingUI then
+                    loadingUI.Visible = false
+                end
+            end
+
+            return orig_updGameState(newState, mapData, mapIndex)
+        end)
+
+        -- Hook screenFade to disable blur/fade transitions when Fast Load is active
+        if CLMAINenv.screenFade then
+            local orig_screenFade
+            orig_screenFade = hookfunction(CLMAINenv.screenFade, function(...)
+                if UI_State.FastLoad then
+                    local lighting = game:GetService("Lighting")
+                    if lighting:FindFirstChild("Fade_Blur") then lighting.Fade_Blur.Enabled = false end
+                    if lighting:FindFirstChild("Fade_ColorCorrection") then lighting.Fade_ColorCorrection.Enabled = false end
+                    return
+                end
+                return orig_screenFade(...)
+            end)
+        end
+    end
+end
+
+-- ==============================================================================
 -- [KAVO UI SETUP & INTEGRATION] (Tab-Separated Interface)
 -- ==============================================================================
 
@@ -171,6 +218,10 @@ local CreditsSection = CreditsTab:NewSection("Information")
 local FarmToggle = CoreSection:NewToggle("Enable Autofarm", "Automatically beats maps", function(state)
     UI_State.FarmActive = state
     getgenv().TomatoAutoFarm = state
+end)
+
+local FastLoadToggle = CoreSection:NewToggle("Fast Load", "Bypasses map loading delay & screens", function(state)
+    UI_State.FastLoad = state
 end)
 
 local GodModeToggle = CoreSection:NewToggle("Enable God Mode", "Keeps health at 1000 when active", function(state)
@@ -253,6 +304,9 @@ pcall(function()
     if FarmToggle and FarmToggle.SetState then
         FarmToggle:SetState(false)
     end
+    if FastLoadToggle and FastLoadToggle.SetState then
+        FastLoadToggle:SetState(false)
+    end
     if GodModeToggle and GodModeToggle.SetState then
         GodModeToggle:SetState(false)
     end
@@ -280,7 +334,6 @@ local Colors = {
     Item    = Color3.fromRGB(170, 85, 255)
 }
 
-local CLMAIN = LocalPlayer.PlayerScripts:WaitForChild("CL_MAIN_GameScript")
 local CLMAINenv = getsenv(CLMAIN)
 local Alert
 local oldNewAlert
