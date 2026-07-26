@@ -1,15 +1,16 @@
 --[[
-    FE2 TAS Creator (Ultimate Edition V3.1 - Timeline Enabled)
+    FE2 TAS Creator (Ultimate Edition V3.5)
     Author: Tomato
     File Extension: .fe2tomatas
     
     Features:
-    - LOCAL TIMELINE ENGINE: Executes map timelines & XFrames on ClonedMap during recording.
-    - AUTOMATIC MAP RECORDING: Captures all property changes triggered by local timelines.
+    - FIXED: Auto-Reset Env Sync (Captures timestamp AFTER smooth traversal completes).
+    - UNIFIED TIME BASELINE: Standardized os.clock() across all recording loops.
+    - EXPANDED HITBOX AUTOFARM: Enlarges FE2_Hitbox (1000x) & 20 studs/sec smooth traversal.
+    - EXCLUDED: _WaterNoSwim parts from triggering Auto-Swim.
+    - LOCAL TIMELINE ENGINE: Executes map timelines & XFrames on ClonedMap.
     - Native Luau Buffer Binary Serialization (.fe2tomatas)
     - Quaternion CFrame Encoding (100% Precision, 0% Gimbal Lock)
-    - Predictive Velocity Trajectory & Path Tracing Visualizers
-    - Bounding-Box Auto-Swim Detection & Position Spoofing
     - Tabbed UI API Compatibility (uiapi.luau)
 ]]
 
@@ -17,7 +18,7 @@ getgenv().TAS_Active = true
 
 local UI_API_URL = "https://raw.githubusercontent.com/tomatotxt/Flood-GUI/refs/heads/v4beta/TAS/CREATOR/uiapi.luau"
 
-print("TAS Creator: Timeline-Enabled Ultimate Edition Loaded")
+print("TAS Creator: V3.5 (Perfect Env Sync) Loaded")
 
 -- // CONFIGURATIONS & GLOBALS //
 getgenv().ExtremeSmoothing = false
@@ -89,7 +90,7 @@ local function SendAlert(msg, color)
     end
 end
 
-SendAlert("Timeline-Enabled TAS Creator Initialized", Color3.fromRGB(183, 0, 255))
+SendAlert("TAS Creator V3.5 Initialized", Color3.fromRGB(183, 0, 255))
 
 -- // BYPASSES //
 local OldIndex
@@ -113,10 +114,10 @@ local TimeOffset = 0
 local PreviewOffset = 0
 local IsPaused = true
 local EnvPaused = false
-local PauseStart
+local PauseStart = 0
 local OriginalPlayAnim
 local AnimEnv
-local RunStart
+local RunStart = 0
 local SavedVelocity = Vector3.new(0, 0, 0)
 local Connections = {} 
 
@@ -319,14 +320,9 @@ local function GetCameraCFrame()
     return CFrame.new(x - MapX, y - MapY + 1000, z - MapZ, R00, R01, R02, R10, R11, R12, R20, R21, R22)
 end
 
--- ========================================================
--- // LOCAL TIMELINE ENGINE (Executes Timelines on ClonedMap) //
--- ========================================================
+-- // LOCAL TIMELINE ENGINE //
 local function InitClonedMapTimelines(mapModel)
-    if not TimelinePlayer or not SharedMapScriptModule then 
-        warn("[TAS CREATOR] Timeline modules missing. Local timelines disabled.")
-        return 
-    end
+    if not TimelinePlayer or not SharedMapScriptModule then return end
 
     local descendants = mapModel:GetDescendants()
     local boundCount = 0
@@ -352,8 +348,6 @@ local function InitClonedMapTimelines(mapModel)
                                     debounceTable[userIdStr] = true
 
                                     SendAlert("Local Timeline Triggered: " .. obj.Name, Color3.fromRGB(85, 170, 255))
-
-                                    -- Execute timeline locally on ClonedMap
                                     task.spawn(TimelinePlayer.PlayTimeline, nil, obj, LocalPlayer, nil, mapModel, 1)
 
                                     local cd = typeof(debounceAttr) == "number" and debounceAttr or 1
@@ -367,13 +361,9 @@ local function InitClonedMapTimelines(mapModel)
             end
         end
     end
-
-    SendAlert("Timelines Linked: Bound " .. boundCount .. " Triggers", Color3.fromRGB(0, 255, 255))
 end
 
--- ========================================================
 -- // DYNAMIC ANIMATION EVALUATOR //
--- ========================================================
 local function GetActiveAnimation()
     local char = LocalPlayer.Character
     if not char then return {"idle", 0.1} end
@@ -403,7 +393,7 @@ end
 
 local function CaptureFrameData()
     return PackFrame(
-        tick() - RunStart - TimeOffset,
+        os.clock() - RunStart - TimeOffset,
         LocalPlayer.Character.HumanoidRootPart.Velocity,
         GetPlayerCFrame(),
         GetCameraCFrame(),
@@ -446,7 +436,6 @@ function BufferStream:WriteCFrame(cf)
     self:WriteF32(qx); self:WriteF32(qy); self:WriteF32(qz); self:WriteF32(qw)
 end
 
--- BINARY DESERIALIZER FOR FILE LOADING
 local BufferReader = {}
 BufferReader.__index = BufferReader
 
@@ -473,7 +462,6 @@ local function SaveRunToFile(overrideName)
     local MapName = ClonedMap and ClonedMap:FindFirstChild("Settings") and ClonedMap.Settings:GetAttribute("MapName") or "Unknown_Map"
     local saveName = (overrideName and overrideName ~= "") and overrideName or MapName
     
-    -- Write Header
     buffer.writestring(stream.Buf, 0, "FE2T"); stream.Pos += 4
     stream:WriteU8(2) -- Version
     stream:WriteU8(60) -- Target FPS
@@ -573,7 +561,6 @@ local function BindUI()
     btns.Collision.Activated:Connect(ToggleCollision)
     btns.Stop.Activated:Connect(function() task.spawn(ResetToNormal) end)
     
-    -- Configs
     btns.DebugView.Activated:Connect(function()
         DebugActive = not DebugActive
         if DebugActive then
@@ -627,7 +614,6 @@ local function BindUI()
         end)
     end
 
-    -- Files Tab
     btns.SaveRun.Activated:Connect(function()
         local textName = UI_Elements.SaveBox and UI_Elements.SaveBox.Text
         SaveRunToFile(textName)
@@ -876,11 +862,11 @@ function TogglePause()
         IsPaused = not IsPaused
         local Root = LocalPlayer.Character.HumanoidRootPart
         if IsPaused then
-            SavedVelocity = Root.Velocity; Root.Anchored = true; PauseStart = tick()
+            SavedVelocity = Root.Velocity; Root.Anchored = true; PauseStart = os.clock()
             if StatusLabel then StatusLabel.Text = "PAUSED"; StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 80) end
             SendAlert("Paused", Color3.fromRGB(255, 255, 0))
         else
-            Root.Anchored = false; Root.Velocity = SavedVelocity; TimeOffset += (tick() - PauseStart)
+            Root.Anchored = false; Root.Velocity = SavedVelocity; TimeOffset += (os.clock() - PauseStart)
             if StatusLabel then StatusLabel.Text = "PLAYING"; StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255) end
             RecordAccumulator = 0
             SendAlert("Unpaused", Color3.fromRGB(0, 255, 0))
@@ -901,7 +887,7 @@ function LoadLastSavestate()
         Root.Velocity = Frame.Velocity; SavedVelocity = Frame.Velocity
         
         workspace.CurrentCamera.CFrame = Frame.CameraCFrame
-        PauseStart = tick(); RunStart = tick() - Frame.Time; TimeOffset = 0
+        PauseStart = os.clock(); RunStart = os.clock() - Frame.Time; TimeOffset = 0
         
         SyncButtonState(Frame.Time, Frame.Time); UpdateMapState(Frame.Time)
         
@@ -909,7 +895,7 @@ function LoadLastSavestate()
         if Frame.Animation[1] == "walk" then AnimEnv.setAnimationSpeed(0.76) end
         
         task.spawn(function() UpdateTimeDisplay(Frame.Time) end)
-        SendAlert("Savestate Loaded", Color3.fromRGB(0, 255, 255))
+        SendAlert("Savestate Loaded", Color3.fromRGB(0, 255, 0))
     end
 end
 
@@ -920,8 +906,8 @@ end
 
 local RemoveConfirm = false; local RemoveConfirmTime = 0
 function RemoveSavestate()
-    if not RemoveConfirm or (tick() - RemoveConfirmTime > 2) then
-        RemoveConfirm = true; RemoveConfirmTime = tick()
+    if not RemoveConfirm or (os.clock() - RemoveConfirmTime > 2) then
+        RemoveConfirm = true; RemoveConfirmTime = os.clock()
         SendAlert("Press again to remove last state", Color3.fromRGB(255, 170, 0))
         return
     end
@@ -1049,10 +1035,17 @@ local function SetupMap()
     end
     
     SendAlert("Autofarm: Found " .. #Buttons .. " Buttons", Color3.fromRGB(0, 255, 0))
-    SendAlert("Commencing Auto Farm", Color3.fromRGB(255, 170, 0))
+    SendAlert("Commencing Smooth Auto Farm (20 studs/s)", Color3.fromRGB(255, 170, 0))
 
     Noclip(true)
     local GodModeCon = RunService.RenderStepped:Connect(function() if Hum then Hum.Health = 99999 end end)
+    
+    -- ENLARGE HITBOX FOR BROAD TOUCH COVERAGE
+    local CharHitbox = Char:FindFirstChild("FE2_Hitbox")
+    local OrigHitboxSize = CharHitbox and CharHitbox.Size or Vector3.new(2, 2, 1)
+    if CharHitbox then
+        CharHitbox.Size = Vector3.new(1000, 1000, 1000)
+    end
     
     local LastSafePos = CFrame.new(0, 1000, 0)
     local LiveExitRegion = nil 
@@ -1074,27 +1067,46 @@ local function SetupMap()
                 if (TouchFound and GuiFound) then
                     FailedScan = false; Root.Anchored = false
                     
-                    if Button ~= LastTargetButton then
-                        local uuid = GetUUID(ButtonHitbox)
-                        if uuid and not table.find(RecordedButtonSequence, uuid) then
-                            table.insert(RecordedButtonSequence, uuid)
-                            local Ping = LocalPlayer:GetNetworkPing()
-                            ButtonPressTimings[uuid] = (os.clock() - StartTime) + Ping
-                        end
-                        if LastTargetButton ~= nil then task.wait(0.1) end
-                        LastTargetButton = Button
-                    else
-                        local uuid = GetUUID(ButtonHitbox)
-                        if uuid and not table.find(RecordedButtonSequence, uuid) then
-                            table.insert(RecordedButtonSequence, uuid)
-                            local Ping = LocalPlayer:GetNetworkPing()
-                            ButtonPressTimings[uuid] = (os.clock() - StartTime) + Ping
+                    -- SMOOTH TRAVERSAL (20 STUDS/SEC TOWARD BUTTON)
+                    local startPos = Root.Position
+                    local targetPos = ButtonHitbox.Position
+                    local distance = (targetPos - startPos).Magnitude
+                    local traverseSpeed = 20
+                    local travelTime = distance / traverseSpeed
+                    
+                    if travelTime > 0 then
+                        local traverseStart = os.clock()
+                        while (os.clock() - traverseStart) < travelTime and Recording and LiveMap.Parent and Hum.Health > 0 do
+                            local alpha = math.clamp((os.clock() - traverseStart) / travelTime, 0, 1)
+                            local currentPos = startPos:Lerp(targetPos, alpha)
+                            Root.CFrame = CFrame.new(currentPos)
+                            Root.Velocity = (distance > 0) and ((targetPos - startPos).Unit * traverseSpeed) or Vector3.zero
+                            Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                            RunService.Heartbeat:Wait()
                         end
                     end
-                    Root.CFrame = CFrame.new(ButtonHitbox.Position)
+                    
+                    -- SET FINAL POSITION ON BUTTON
+                    Root.CFrame = CFrame.new(targetPos)
                     Root.Velocity = Vector3.zero
                     Hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                    task.wait(0.255/15)
+                    task.wait(0.1)
+                    
+                    -- ========================================================
+                    -- // ACCURATE TIMING CAPTURE: RECORD AFTER TOUCH //
+                    -- ========================================================
+                    local uuid = GetUUID(ButtonHitbox)
+                    if uuid then
+                        local exactTouchTime = os.clock() - StartTime
+                        ButtonPressTimings[uuid] = exactTouchTime
+                        
+                        if not table.find(RecordedButtonSequence, uuid) then
+                            table.insert(RecordedButtonSequence, uuid)
+                        end
+                    end
+                    
+                    LastTargetButton = Button
+                    task.wait(0.15)
                 end
             end
         end
@@ -1107,6 +1119,9 @@ local function SetupMap()
         end
         RunService.Heartbeat:Wait()
     end
+    
+    -- RESTORE HITBOX SIZE
+    if CharHitbox then CharHitbox.Size = OrigHitboxSize end
     
     Recording = false
     if GodModeCon then GodModeCon:Disconnect() end
@@ -1160,7 +1175,7 @@ local function SetupMap()
     task.wait(0.5); Root.Anchored = true; Hum.WalkSpeed = 20; Hum.JumpPower = 50
     
     table.insert(Savestates, {PackFrame(0, Vector3.zero, GetPlayerCFrame(), GetCameraCFrame(), {"idle", 0})})
-    PauseStart = tick(); RunStart = tick(); HookAnimations()
+    PauseStart = os.clock(); RunStart = os.clock(); HookAnimations()
     
     AddConnection(LocalPlayer.CharacterAdded:Connect(function(c)
         local anim = c:WaitForChild("Animate")
@@ -1169,7 +1184,6 @@ local function SetupMap()
     
     LoadUI(MapName)
     
-    -- Initialize Local Timelines for ClonedMap
     InitClonedMapTimelines(ClonedMap)
     
     WaterParts = {}; TotalButtons = {}; ButtonRegistry = {}; OrderedButtonRegistry = {}
@@ -1177,7 +1191,15 @@ local function SetupMap()
 
     for _, obj in ipairs(ClonedMap:GetDescendants()) do
         if obj:IsA("BasePart") then
-             if obj.Name:find("_Water") then table.insert(WaterParts, obj) end
+             if obj.Name:find("_Water") then
+                 local isNoSwim = obj.Name:find("NoSwim") 
+                     or (obj:FindFirstChild("WaterState") and obj.WaterState:GetAttribute("NoSwim") == true)
+                     or obj:GetAttribute("NoSwim") == true
+                 
+                 if not isNoSwim then
+                     table.insert(WaterParts, obj)
+                 end
+             end
              
              if obj.Name == "RopeStart" then
                  AddConnection(obj.Touched:Connect(function(hit)
@@ -1215,7 +1237,7 @@ local function SetupMap()
                             if prevBtn and not prevBtn.IsPressed then SendAlert("WRONG ORDER! Press Button #" .. (bData.Order - 1) .. " first!", Color3.fromRGB(255, 0, 0)); return end
                         end
                         
-                        local RealTime = tick() - RunStart - TimeOffset
+                        local RealTime = os.clock() - RunStart - TimeOffset
                         if AutoResetEnv and bData.RecordedTime then
                             PreviewOffset = bData.RecordedTime - RealTime
                             SendAlert("Synced to " .. string.format("%.2fs", bData.RecordedTime), Color3.fromRGB(0, 255, 255))
@@ -1260,7 +1282,7 @@ local function SetupMap()
                                 if prevBtn and not prevBtn.IsPressed then SendAlert("WRONG ORDER! Press Button #" .. (bData.Order - 1) .. " first!", Color3.fromRGB(255, 0, 0)); return end
                             end
                             
-                            local RealTime = tick() - RunStart - TimeOffset
+                            local RealTime = os.clock() - RunStart - TimeOffset
                             if AutoResetEnv and bData.RecordedTime then
                                 PreviewOffset = bData.RecordedTime - RealTime
                                 SendAlert("Synced to " .. string.format("%.2fs", bData.RecordedTime), Color3.fromRGB(0, 255, 255))
@@ -1304,7 +1326,7 @@ function RewindFrame()
             Root.CFrame = Frame.CFrame + Vector3.new(MapX, MapY - 1000, MapZ)
             Root.Velocity = Frame.Velocity; SavedVelocity = Frame.Velocity
             workspace.CurrentCamera.CFrame = Frame.CameraCFrame
-            PauseStart = tick(); RunStart = tick() - Frame.Time; TimeOffset = 0
+            PauseStart = os.clock(); RunStart = os.clock() - Frame.Time; TimeOffset = 0
             
             local VisualTime = Frame.Time + PreviewOffset
             SyncButtonState(VisualTime, Frame.Time); UpdateMapState(VisualTime)
@@ -1380,7 +1402,7 @@ function PlaybackTAS(Data)
     local Offset = ClonedMap.PrimaryPart.Position - Vector3.new(0, 1000, 0)
     
     local OldFrame = 1
-    local PlayStart = tick()
+    local PlayStart = os.clock()
     IsTASSliding = false
     LastTASAnim = nil
 
@@ -1409,7 +1431,7 @@ function PlaybackTAS(Data)
         end
         Root.Anchored = true
         
-        local Elapsed = tick() - PlayStart
+        local Elapsed = os.clock() - PlayStart
         UpdateMapState(Elapsed)
         SyncButtonState(Elapsed, Elapsed)
         
@@ -1495,7 +1517,7 @@ repeat task.wait() until LocalPlayer.Character.HumanoidRootPart.Anchored == fals
 SetupMap()
 
 -- // HEARTBEAT LOOP //
-local LastHeartbeat = tick()
+local LastHeartbeat = os.clock()
 local HBCon = RunService.Heartbeat:Connect(function(dt)
     if not getgenv().TAS_Active then return end
     if not UI_Elements or not UI_Elements.ScreenGui or not UI_Elements.ScreenGui.Parent then return end
@@ -1504,11 +1526,11 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
     if not RunStart then return end
     if IsViewingTAS or IsRewinding or IsAdvancingFrame then return end
 
-    if IsPreviewingForward then PreviewOffset = PreviewOffset + (dt * 5) end
-    if IsPreviewingBackward then PreviewOffset = PreviewOffset - (dt * 5) end
+    if IsPreviewingForward then PreviewOffset += (dt * 5) end
+    if IsPreviewingBackward then PreviewOffset -= (dt * 5) end
 
     local RealTime = 0
-    if not IsPaused then RealTime = tick() - RunStart - TimeOffset else RealTime = (PauseStart or tick()) - RunStart - TimeOffset end
+    if not IsPaused then RealTime = os.clock() - RunStart - TimeOffset else RealTime = (PauseStart or os.clock()) - RunStart - TimeOffset end
     
     local VisualTime = RealTime + PreviewOffset; if VisualTime < 0 then VisualTime = 0 end
     
@@ -1524,13 +1546,13 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
     end
 
     if not IsPaused then
-        RecordAccumulator = RecordAccumulator + dt
+        RecordAccumulator += dt
         if RecordAccumulator >= RECORD_INTERVAL then
-            RecordAccumulator = RecordAccumulator - RECORD_INTERVAL
+            RecordAccumulator -= RECORD_INTERVAL
             if RecordAccumulator > RECORD_INTERVAL then RecordAccumulator = 0 end
             table.insert(Frames, CaptureFrameData())
         end
-        if tick() - LastHeartbeat >= 2 then LastHeartbeat = tick() end
+        if os.clock() - LastHeartbeat >= 2 then LastHeartbeat = os.clock() end
         
         if ClonedMap then
             local ExitRegion = ClonedMap:FindFirstChild("ExitRegion", true)
@@ -1544,7 +1566,7 @@ local HBCon = RunService.Heartbeat:Connect(function(dt)
             end
         end
     else 
-        LastHeartbeat = tick() 
+        LastHeartbeat = os.clock() 
     end
     
     local RootPart = LocalPlayer.Character.HumanoidRootPart
@@ -1594,7 +1616,7 @@ local InputCon = UserInputService.InputBegan:Connect(function(input, gpe)
             SendAlert("Smart Env Sync: " .. (AutoResetEnv and "ON" or "OFF"), Color3.fromRGB(0, 255, 255))
         elseif k == Keybinds.Resync then
             IsPreviewingForward = false; IsPreviewingBackward = false; PreviewOffset = 0
-            SendAlert("Visuals Resynced", Color3.fromRGB(0, 255, 255))
+            SendAlert("Visuals Resynced", Color3.fromRGB(0, 255, 0))
         elseif k == Keybinds.ViewTAS then
             if not IsViewingTAS then PlaybackTAS(CompileTASData()) end
         elseif k == Keybinds.AutoSwimToggler then
