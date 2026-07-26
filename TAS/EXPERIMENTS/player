@@ -1,0 +1,367 @@
+--[[
+    FE2 Tomato TAS Player V2 (Binary Engine)
+    - DECODES: .fe2tomatas binary files via Luau buffer API
+    - INJECTS: 100% Accurate Physics via RunService.PreSimulation
+    - OVERRIDES: Quaternions, Water Snapshots, Mechanic States
+    - BYPASSES: CL_AntiSideClip, CL_AirMomentum, FE2_Character internals
+]]
+
+local TimeModifier = 1 -- Playback Speed (1 = Normal, 0.5 = 2x Speed, etc.)
+
+print("Tomato TAS Player V2: Binary Decoder & PreSim Engine")
+
+-- // GLOBAL CLEANUP //
+if getgenv().TASConnections then
+    for _, connection in pairs(getgenv().TASConnections) do
+        if typeof(connection) == "RBXScriptConnection" then connection:Disconnect() end
+    end
+end
+getgenv().TASConnections = {}
+
+local function AddConnection(conn)
+    table.insert(getgenv().TASConnections, conn)
+    return conn
+end
+
+-- // SERVICES //
+local RS = game:GetService('RunService')
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LP = Players.LocalPlayer
+
+-- // ALERTS //
+local CLMAIN
+pcall(function() CLMAIN = getsenv(LP.PlayerScripts:WaitForChild("CL_MAIN_GameScript", 5)) end)
+local function Alert(msg, color)
+    print("[TAS Player] " .. msg)
+    if CLMAIN and CLMAIN.newAlert then
+        pcall(function() CLMAIN.newAlert(msg, color or Color3.new(1,1,1), 1.5, nil) end)
+    end
+end
+
+Alert("TAS Player Initialized.", Color3.fromRGB(183, 0, 255))
+
+-- // BINARY DESERIALIZER (.fe2tomatas) //
+local BufferReader = {}
+BufferReader.__index = BufferReader
+
+function BufferReader.new(buf)
+    return setmetatable({ Buf = buf, Pos = 0 }, BufferReader)
+end
+function BufferReader:ReadU8() local v = buffer.readu8(self.Buf, self.Pos); self.Pos += 1; return v end
+function BufferReader:ReadU16() local v = buffer.readu16(self.Buf, self.Pos); self.Pos += 2; return v end
+function BufferReader:ReadU32() local v = buffer.readu32(self.Buf, self.Pos); self.Pos += 4; return v end
+function BufferReader:ReadF32() local v = buffer.readf32(self.Buf, self.Pos); self.Pos += 4; return v end
+function BufferReader:ReadString()
+    local len = self:ReadU16()
+    local str = buffer.readstring(self.Buf, self.Pos, len)
+    self.Pos += len; return str
+end
+function BufferReader:ReadVector3() return Vector3.new(self:ReadF32(), self:ReadF32(), self:ReadF32()) end
+function BufferReader:ReadCFrame()
+    local pos = self:ReadVector3()
+    local qx, qy, qz, qw = self:ReadF32(), self:ReadF32(), self:ReadF32(), self:ReadF32()
+    return CFrame.new(pos.X, pos.Y, pos.Z, qx, qy, qz, qw)
+end
+
+-- // ENGINE SPOOFER HOOKS //
+getgenv().IsTASPlaying = true 
+getgenv().TASCurrentMoveDir = Vector3.zero
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, key)
+    if getgenv().IsTASPlaying and key == "MoveDirection" and self:IsA("Humanoid") and self.Parent == LP.Character then
+        return getgenv().TASCurrentMoveDir
+    end
+    return oldIndex(self, key)
+end)
+
+-- // CLEANUP FUNCTION //
+local CleanedUp = false
+local function Cleanup(resetCharacter)
+    if CleanedUp then return end
+    CleanedUp = true
+    getgenv().IsTASPlaying = false
+    Alert("Cleaning Up TAS Engine...", Color3.fromRGB(255, 100, 100))
+    
+    for _, connection in pairs(getgenv().TASConnections) do connection:Disconnect() end
+    getgenv().TASConnections = {}
+
+    -- Re-enable Scripts
+    if LP.Character then
+        local antiClip = LP.Character:FindFirstChild("CL_AntiSideClip")
+        local airMom = LP.Character:FindFirstChild("CL_AirMomentum")
+        if antiClip then antiClip.Disabled = false end
+        if airMom then airMom.Disabled = false end
+    end
+
+    if resetCharacter and LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        LP.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+        LP.Character.Humanoid.Health = 0
+    end
+end
+
+if LP.Character then
+    AddConnection(LP.Character:WaitForChild("Humanoid").Died:Connect(function() Cleanup(false) end))
+end
+
+-- // SMART START & MAP RESOLVER //
+local LiftCheckPos = Vector3.new(-25, -144, 139)
+local MapModel = nil
+
+while not MapModel and not CleanedUp do
+    local InZone = false
+    Alert("Waiting for Player in Lift...", Color3.fromRGB(255, 255, 0))
+    
+    repeat
+        task.wait(0.1)
+        local Root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if Root then
+            local Dist = (Root.Position - LiftCheckPos).Magnitude
+            if Dist <= 30 or Dist > 800 then InZone = true end
+        end
+    until InZone or CleanedUp
+    
+    if CleanedUp then return end
+    Alert("Ready! Waiting for Map Load...", Color3.fromRGB(0, 255, 255))
+    
+    while InZone and not CleanedUp do
+        local Root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if Root then
+            local Dist = (Root.Position - LiftCheckPos).Magnitude
+            if Dist > 30 and Dist <= 800 then
+                InZone = false
+                Alert("Left Zone - Pausing...", Color3.fromRGB(255, 100, 0))
+                break
+            end
+        end
+        
+        local FoundMap = Workspace.Multiplayer:FindFirstChild("NewMap") or Workspace.Multiplayer:FindFirstChild("Map")
+        if FoundMap then MapModel = FoundMap; break end
+        task.wait(0.1)
+    end
+end
+
+if CleanedUp or not MapModel then return end
+
+-- Wait for map initialization
+repeat task.wait() until MapModel.Name == "Map" or CleanedUp
+if CleanedUp then return end
+
+-- // LOAD BINARY .fe2tomatas FILE //
+local rawMapName = MapModel:WaitForChild("Settings"):GetAttribute("MapName") or "Unknown_Map"
+local cleanName = rawMapName:gsub("[^%w_]", "")
+local filename = "FE2_TAS_Runs/" .. cleanName .. ".fe2tomatas"
+
+if not readfile or not isfile(filename) then
+    Alert("TAS File Missing! Expected: " .. filename, Color3.new(1,0,0))
+    Cleanup(true)
+    return
+end
+
+local fileContent = readfile(filename)
+local binaryBuf = buffer.fromstring(fileContent)
+local Reader = BufferReader.new(binaryBuf)
+
+-- Verify Magic & Header
+local magic = buffer.readstring(binaryBuf, 0, 4); Reader.Pos += 4
+if magic ~= "FE2T" then
+    Alert("Invalid TAS File Magic!", Color3.new(1,0,0))
+    Cleanup(true)
+    return
+end
+
+local version = Reader:ReadU8()
+local targetFPS = Reader:ReadU8()
+local totalFrames = Reader:ReadU32()
+local creator = Reader:ReadString()
+local recordedMapName = Reader:ReadString()
+
+Alert(string.format("Loaded TAS by [%s] | Frames: %d", creator, totalFrames), Color3.new(0,1,1))
+
+-- // DECODE FRAMES //
+local TAS_Frames = table.create(totalFrames)
+
+for i = 1, totalFrames do
+    local fNum = Reader:ReadU32()
+    local dt = Reader:ReadF32()
+    local mask = Reader:ReadU8()
+    
+    local isTeleport = bit32.btest(mask, 32)
+    local hasWater = bit32.btest(mask, 64)
+    
+    local moveDir = Reader:ReadVector3()
+    local camLook = Reader:ReadVector3()
+    local relCF = Reader:ReadCFrame()
+    local linVel = Reader:ReadVector3()
+    local angVel = Reader:ReadVector3()
+    
+    local hipH = Reader:ReadF32()
+    local rootSize = Reader:ReadVector3()
+    local ws = Reader:ReadF32()
+    local jp = Reader:ReadF32()
+    local grav = Reader:ReadF32()
+    local mechState = Reader:ReadU8()
+    
+    local waterMap = nil
+    if hasWater then
+        waterMap = {}
+        local count = Reader:ReadU16()
+        for _ = 1, count do
+            local id = Reader:ReadString()
+            waterMap[id] = { RelCF = Reader:ReadCFrame(), Size = Reader:ReadVector3() }
+        end
+    end
+    
+    TAS_Frames[i] = {
+        Time = (i - 1) * dt,
+        DeltaTime = dt,
+        MoveDirection = moveDir,
+        RelativeCFrame = relCF,
+        LinearVelocity = linVel,
+        AngularVelocity = angVel,
+        HipHeight = hipH,
+        RootSize = rootSize,
+        WalkSpeed = ws,
+        JumpPower = jp,
+        Gravity = grav,
+        MechanicState = mechState,
+        IsTeleport = isTeleport,
+        WaterSnapshots = waterMap
+    }
+end
+
+-- // MAP ORIGIN RESOLVER //
+local function GetMapOrigin()
+    if MapModel.PrimaryPart then return MapModel.PrimaryPart.CFrame end
+    if MapModel:FindFirstChild("Settings") and MapModel.Settings:GetAttribute("MapOrigin") then
+        return MapModel.Settings:GetAttribute("MapOrigin")
+    end
+    return MapModel:GetPivot()
+end
+
+-- // WATER RESTORATION //
+local function RestoreWaterState(waterMap)
+    if not waterMap then return end
+    local origin = GetMapOrigin()
+    
+    for id, state in pairs(waterMap) do
+        -- Find part by DebugId or Lobby Name (Fallback search if ID changed across servers)
+        for _, desc in ipairs(MapModel:GetDescendants()) do
+            if desc:IsA("BasePart") and desc.Name:find("_Water") and desc:GetDebugId() == id then
+                desc.CFrame = origin:ToWorldSpace(state.RelCF)
+                desc.Size = state.Size
+                break
+            end
+        end
+    end
+end
+
+-- // ENGINE BYPASSES //
+local RootPart = LP.Character:WaitForChild("HumanoidRootPart", 10)
+local Humanoid = LP.Character:WaitForChild("Humanoid", 10)
+
+if not RootPart or not Humanoid then Cleanup(true) return end
+
+-- Disable Anti-Cheats & Physics Modifiers
+local antiClip = LP.Character:FindFirstChild("CL_AntiSideClip")
+local airMom = LP.Character:FindFirstChild("CL_AirMomentum")
+if antiClip then antiClip.Disabled = true end
+if airMom then airMom.Disabled = true end
+
+-- Hook Animations
+local AnimateEnv
+pcall(function() AnimateEnv = getsenv(LP.Character:WaitForChild("Animate")) end)
+
+while RootPart.Anchored do
+    if CleanedUp then return end
+    RootPart:GetPropertyChangedSignal("Anchored"):Wait()
+end
+
+Alert("Executing TAS...", Color3.fromRGB(0, 255, 0))
+
+local TimeStart = os.clock()
+local RenderedFrames = 0
+local PlaybackFrame = 1
+local FinishedRun = false
+
+-- // PRESIMULATION PHYSICS LOOP //
+-- Using PreSimulation ensures we inject BEFORE Roblox calculates collisions
+local MainLoop = RS.PreSimulation:Connect(function()
+    if CleanedUp then return end
+    
+    if not RootPart or not RootPart.Parent or not Humanoid then
+        Cleanup(false)
+        return
+    end
+
+    RenderedFrames += 1
+    local Elapsed = (os.clock() - TimeStart) * TimeModifier
+    
+    -- Advance Frame
+    while PlaybackFrame < totalFrames and TAS_Frames[PlaybackFrame + 1].Time <= Elapsed do 
+        PlaybackFrame += 1 
+    end
+
+    if PlaybackFrame >= totalFrames then
+        if not FinishedRun then
+            FinishedRun = true
+            Alert('TAS Finished!', Color3.new(0, 1, 0))
+            Cleanup(false) 
+        end
+        return
+    end
+
+    local FA = TAS_Frames[PlaybackFrame]
+    local FB = TAS_Frames[PlaybackFrame + 1] or FA
+
+    local Dur = FB.Time - FA.Time
+    local Alpha = (Dur > 0) and math.clamp((Elapsed - FA.Time) / Dur, 0, 1) or 0
+
+    local MapOrigin = GetMapOrigin()
+    
+    -- Lerp CFrames & Velocities
+    local targetCF = FA.RelativeCFrame:Lerp(FB.RelativeCFrame, Alpha)
+    local targetLinVel = FA.LinearVelocity:Lerp(FB.LinearVelocity, Alpha)
+    local targetAngVel = FA.AngularVelocity:Lerp(FB.AngularVelocity, Alpha)
+
+    -- If a teleport discontinuity happened, snap immediately instead of lerping
+    if FB.IsTeleport and Alpha < 0.5 then
+        targetCF = FA.RelativeCFrame
+    elseif FB.IsTeleport and Alpha >= 0.5 then
+        targetCF = FB.RelativeCFrame
+    end
+
+    -- 1. Apply Move Direction (Spoofed via __index)
+    getgenv().TASCurrentMoveDir = FA.MoveDirection
+
+    -- 2. Inject Physics (World Space)
+    RootPart.CFrame = MapOrigin:ToWorldSpace(targetCF)
+    RootPart.AssemblyLinearVelocity = targetLinVel
+    RootPart.AssemblyAngularVelocity = targetAngVel
+
+    -- 3. Inject Humanoid Properties
+    Humanoid.HipHeight = FA.HipHeight
+    RootPart.Size = FA.RootSize
+    Humanoid.WalkSpeed = FA.WalkSpeed
+    Humanoid.JumpPower = FA.JumpPower
+    Workspace.Gravity = FA.Gravity
+    Humanoid.Health = 99999 -- Godmode
+    Humanoid.AutoRotate = false
+
+    -- 4. Apply Water Restoration
+    local waterTarget = (Alpha < 0.5) and FA.WaterSnapshots or FB.WaterSnapshots
+    if waterTarget then RestoreWaterState(waterTarget) end
+
+    -- 5. Force Mechanic Animations (Sliding, Walljumping, etc)
+    if AnimateEnv and AnimateEnv.playAnimation then
+        if FA.MechanicState == 1 then
+            AnimateEnv.playAnimation("slide", 0.1, Humanoid)
+        elseif FA.MechanicState == 3 then
+            AnimateEnv.playAnimation("wallhang", 0.1, Humanoid)
+        elseif FA.MechanicState == 4 then
+            AnimateEnv.playAnimation("swing", 0.1, Humanoid)
+        end
+    end
+end)
+AddConnection(MainLoop)
