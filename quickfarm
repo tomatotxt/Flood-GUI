@@ -1,3 +1,5 @@
+--- START OF FILE Paste July 28, 2026 - 4:03PM ---
+
 -- START OF FILE Paste July 24, 2026 - 1:54PM --
 
 -- START OF FILE Paste July 16, 2026 - 7:49PM --
@@ -33,10 +35,10 @@ _G.ReqRebirth = RemoteFolder:FindFirstChild("ReqRebirth", true)
 _G.ServerPasskey = -reqPassKey:InvokeServer() 
 
 -- ==============================================================================
--- [AUTHORSHIP INTEGRITY & PROTECTION] (Creator: tomatotxt on discord)
+-- [AUTHORSHIP INTEGRITY & PROTECTION] (Creator: tomato.txt on discord)
 -- ==============================================================================
 
-local CREATOR_TAG = "tomatotxt on discord"
+local CREATOR_TAG = "tomato.txt on discord"
 local DISCORD_INVITE = "discord.gg/8N2M9fHJqa"
 
 -- Global UI State Table (Directly bound to Kavo UI & Background Features)
@@ -68,8 +70,8 @@ local function VerifyIntegrity()
     for i = 1, #CREATOR_TAG do
         hash = hash + string.byte(CREATOR_TAG, i)
     end
-    -- Byte sum validation for "tomatotxt on discord" (2041)
-    if hash ~= 2041 or CREATOR_TAG ~= "tomatotxt on discord" or not UI_State or typeof(UI_State) ~= "table" then
+    -- Byte sum validation for "tomato.txt on discord" (2087)
+    if hash ~= 2087 or CREATOR_TAG ~= "tomato.txt on discord" or not UI_State or typeof(UI_State) ~= "table" then
         getgenv().TomatoAutoFarm = false
         _G.LoopCancel = true
         task.spawn(function()
@@ -196,7 +198,7 @@ end
 -- ==============================================================================
 
 local Library = loadstring(game:HttpGet("https://github.com/tomatotxt/Kavo-UI-Library/raw/refs/heads/main/source.lua"))()
-local Window = Library.CreateLib("Quickest FE2 Autofarm | by tomatotxt", "Midnight")
+local Window = Library.CreateLib("Quickest FE2 Autofarm | by tomato.txt", "Midnight")
 
 -- Tabs
 local AutofarmTab = Window:NewTab("Autofarm")
@@ -298,7 +300,7 @@ end)
 CreditsSection:NewLabel("Creator: " .. CREATOR_TAG)
 CreditsSection:NewButton("Copy Discord Tag", "Copies creator name to clipboard", function()
     if setclipboard then
-        setclipboard("tomatotxt")
+        setclipboard("tomato.txt")
     end
 end)
 
@@ -366,13 +368,13 @@ if oldNewAlert then
             pcall(function() 
                 oldNewAlert(Output, SelectedColor, nil, nil) 
             end)
-            print("[TOMATOTXT] " .. Output)
+            print("[TOMATO.TXT] " .. Output)
         end
     end
 else
     Alert = function(Text, ...)
         VerifyIntegrity()
-        print("[TOMATOTXT] " .. tostring(Text))
+        print("[TOMATO.TXT] " .. tostring(Text))
     end
     print("Your executor does not support Alerts.")
 end
@@ -832,7 +834,7 @@ local function OnMapLoad(Map)
                 -- Instantly teleport to lobby coordinates when reset is disabled
                 HRP.CFrame = CFrame.new(-25, -144, 139)
                 HRP.Velocity = Vector3.zero
-                Alert("Escaped successfully! (Credit: tomatotxt on discord)", "Success")
+                Alert("Escaped successfully! (Credit: tomato.txt on discord)", "Success")
             end
         end
         
@@ -899,8 +901,8 @@ _G.LoopCancel = false
 
 print([[
 =========================================================
-  TOMATOTXT FE2 AUTOFARM INITIALIZED
-  Developer: tomatotxt on discord
+  TOMATO.TXT FE2 AUTOFARM INITIALIZED
+  Developer: tomato.txt on discord
   Status: Active
 =========================================================
 ]])
