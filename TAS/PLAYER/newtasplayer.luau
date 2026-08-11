@@ -1,3 +1,8 @@
+local INPUT = loadstring(game:HttpGet("https://raw.githubusercontent.com/tomatotxt/-/refs/heads/main/input.luau"))()
+
+local UserInputService = game:GetService("UserInputService")
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
 local TimeModifier = 1 -- [CONTROL SPEED HERE] (1 = Normal, 0.5 = 2x Speed, 2 = Slow Motion)
 local DynamicTimeScale = 1 -- [MAP EVENT MODIFIER] Dynamically scales speed mid-game
 local SwimSmoothness = 0.04 -- [SWIMMING ROTATION SMOOTHING] Lower = Smoother, Higher = Snappier (0.01 - 0.1 recommended)
@@ -28,7 +33,7 @@ local SkipMirroredMaps = {
     ["Mysterium"] = true, ["Decaying Silo"] = true, ["Active Volcanic Mines"] = true,
     ["Snowy Stronghold"] = true, ["Classic Canyon"] = true
 }
-
+local State = getgenv().State
 if State and State().HighlightOnlyMaps then
     for _,v in ipairs(State().HighlightOnlyMaps) do SkipMirroredMaps[v] = true end
 end
@@ -218,6 +223,10 @@ local SLIDE_DEBOUNCE = 3.0
 local IsCurrentlySwimming = false
 local IsCurrentlyZiplining = false
 
+-- Manual Key Holding Overrides
+local IsManualZipline = false
+local IsManualSlide = false
+
 -- // CLEANUP & AUTO-QUEUE //
 local LiftCheckPos = Vector3.new(-25, -144, 139)
 local CleanedUp = false
@@ -231,6 +240,15 @@ local function Cleanup(resetCharacter)
     SlideStartTime = 0
     LastSlideEndTime = -3.0
     IsCurrentlyZiplining = false
+    IsManualZipline = false
+    IsManualSlide = false
+
+    -- Clean up GUI
+    local playerGui = LP:FindFirstChild("PlayerGui")
+    if playerGui then
+        local oldGui = playerGui:FindFirstChild("TAS_GUI")
+        if oldGui then oldGui:Destroy() end
+    end
     
     if getgenv().TASConnections then
         for _, connection in pairs(getgenv().TASConnections) do
@@ -375,14 +393,21 @@ until SpawnPoint or t > 10 or CleanedUp
 
 if not SpawnPoint then Log("Hmm, couldn't find where to spawn on this map.", "Error") Cleanup(true) return end
 
--- // MAP PRE-PROCESSING //
+-- // MAP PRE-PROCESSING & BUTTON HITBOX EXPANDER //
 CacheWaterParts(Map)
 
-for _, v in next, Map:GetDescendants() do
+for _, v in ipairs(Map:GetDescendants()) do
     if v.Name == 'ButtonIcon' then
         pcall(function()
-            local p = v.Parent.Parent:FindFirstChildOfClass('Part')
-            if p then p.Size = NewV(7, 7, 7) p.Transparency = 1 end
+            local btnModel = v:FindFirstAncestorOfClass("Model") or v.Parent
+            if btnModel then
+                for _, p in ipairs(btnModel:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.Size = NewV(8, 8, 8)
+                        p.Transparency = 1
+                    end
+                end
+            end
         end)
     end
 end
@@ -423,8 +448,22 @@ local function activateAnimation(AnimData, Elapsed)
     local gameSpeedMultiplier = TimeModifier * DynamicTimeScale
     local nativeSlideDuration = 0.5 / gameSpeedMultiplier
 
-    -- Zipline Priority State Manager (Highest Priority, Overrides Slide)
-    if n == "zipline" then
+    -- MANUAL KEY OVERRIDES (Z = Zipline/Swing, S = Slide)
+    if IsManualZipline then
+        n = "swing"
+        IsCurrentlyZiplining = true
+        if IsSliding then
+            toggleSlide(false)
+            IsSliding = false
+        end
+    elseif IsManualSlide then
+        n = "slide"
+        IsSliding = true
+    end
+
+    -- Zipline/Swing Priority State Manager (Highest Priority, Overrides Slide)
+    if n == "zipline" or n == "swing" then
+        n = "swing" -- Normalise animation name to FE2's "swing"
         IsCurrentlyZiplining = true
         if IsSliding then
             toggleSlide(false)
@@ -433,14 +472,14 @@ local function activateAnimation(AnimData, Elapsed)
         end
     end
 
-    -- Exit zipline state strictly when landing on solid ground
-    if humanoid.FloorMaterial ~= Enum.Material.Air then
+    -- Exit zipline state strictly when landing on solid ground (unless manual zipline key held)
+    if humanoid.FloorMaterial ~= Enum.Material.Air and not IsManualZipline then
         IsCurrentlyZiplining = false
     end
 
-    -- 1. ABSOLUTE PRIORITY SLIDE LOCK (Guarantees exactly nativeSlideDuration, unless overridden by Zipline)
+    -- 1. ABSOLUTE PRIORITY SLIDE LOCK (Guarantees exactly nativeSlideDuration, unless overridden by Zipline or Manual Slide)
     if IsSliding then
-        if Elapsed - SlideStartTime >= nativeSlideDuration then
+        if not IsManualSlide and (Elapsed - SlideStartTime >= nativeSlideDuration) then
             toggleSlide(false)
             IsSliding = false
             LastSlideEndTime = Elapsed
@@ -483,9 +522,9 @@ local function activateAnimation(AnimData, Elapsed)
 
             if not IsCurrentlyZiplining then
                 if n == "slide" then
-                    -- Only allow slide initiation if debounce is cleared, Y velocity is stable, AND grounded
+                    -- Only allow slide initiation if debounce is cleared, Y velocity is stable, AND grounded (or manually forced)
                     local absYVel = math.abs(RootPart.Velocity.Y)
-                    if Elapsed - LastSlideEndTime >= SLIDE_DEBOUNCE and absYVel <= 3 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                    if IsManualSlide or (Elapsed - LastSlideEndTime >= SLIDE_DEBOUNCE and absYVel <= 3 and humanoid.FloorMaterial ~= Enum.Material.Air) then
                         toggleSlide(true)
                         IsSliding = true
                         SlideStartTime = Elapsed
@@ -504,7 +543,7 @@ local function activateAnimation(AnimData, Elapsed)
             end
 
             -- PASSIVE EXIT: If there is no new animation data and we are NOT sliding, do not override
-            if not AnimData and not IsSliding then
+            if not AnimData and not IsSliding and not IsManualZipline and not IsManualSlide then
                 return
             end
 
@@ -543,6 +582,234 @@ local SmoothSwimDirection = nil
 local VisualElapsed = 0
 local LastClock = os.clock()
 
+local PAUSED = false
+
+-- // SPEED CONTROL & PAUSE SYSTEM //
+local function AdjustSpeed(step)
+    TimeModifier = math.clamp(math.round((TimeModifier + step) * 100) / 100, 0.05, 10)
+    
+    local baseSpeed = math.round((1 / TimeModifier) * 100) / 100
+    local totalSpeed = math.round((1 / (TimeModifier * DynamicTimeScale)) * 100) / 100
+    
+    local actionText = (step < 0) and "Increased" or "Decreased"
+    local category = (step < 0) and "Success" or "Warning"
+    
+    Log(string.format("Speed %s! Base: %.2fx | Total: %.2fx (Modifier: %.2f)", 
+        actionText, baseSpeed, totalSpeed, TimeModifier), category)
+end
+
+-- Key bindings via INPUT library
+local upKey = INPUT["Up"]
+if upKey and upKey.Pressed then
+    AddConnection(upKey.Pressed:Connect(function()
+        AdjustSpeed(-0.05) -- UP Arrow: Speeds up playback
+    end))
+end
+
+local downKey = INPUT["Down"]
+if downKey and downKey.Pressed then
+    AddConnection(downKey.Pressed:Connect(function()
+        AdjustSpeed(0.05) -- DOWN Arrow: Slows down playback
+    end))
+end
+
+-- MANUAL HOLD CONTROL: Key Z (Zipline / Swing)
+local zKey = INPUT["Z"]
+if zKey then
+    AddConnection(zKey.Pressed:Connect(function()
+        IsManualZipline = true
+        IsCurrentlyZiplining = true
+        toggleSlide(false)
+        IsSliding = false
+        LastPlayedAnim = nil -- Instantly triggers swing animation
+    end))
+    AddConnection(zKey.Released:Connect(function()
+        IsManualZipline = false
+        IsCurrentlyZiplining = false
+        LastPlayedAnim = nil
+    end))
+end
+
+-- MANUAL HOLD CONTROL: Key S (Slide)
+local sKey = INPUT["S"]
+if sKey then
+    AddConnection(sKey.Pressed:Connect(function()
+        IsManualSlide = true
+        toggleSlide(true)
+        IsSliding = true
+        LastPlayedAnim = nil
+    end))
+    AddConnection(sKey.Released:Connect(function()
+        IsManualSlide = false
+        toggleSlide(false)
+        IsSliding = false
+        LastPlayedAnim = nil
+    end))
+end
+
+local function TriggerPauseToggle()
+    task.spawn(function()
+        repeat task.wait() until Humanoid and Humanoid.FloorMaterial ~= Enum.Material.Air
+        PAUSED = not PAUSED
+        if PAUSED then
+            pcall(function() OriginalPlayAnim("idle", 0.1, Humanoid) end)
+            LastPlayedAnim = "idle"
+            Log("TAS Paused (Grounded)", "Warning")
+        else
+            LastClock = os.clock()
+            Log("TAS Resumed", "Success")
+        end
+    end)
+end
+
+local function HandlePause()
+    TriggerPauseToggle()
+    INPUT["P"].Pressed:Once(HandlePause)
+end
+INPUT["P"].Pressed:Once(HandlePause)
+
+-- // DYNAMIC GUI (MOBILE TOUCH CONTROLS & PC KEYBIND GUIDE) //
+local function SetupGUI()
+    local PlayerGui = LP:WaitForChild("PlayerGui", 10)
+    if not PlayerGui then return end
+
+    local oldGui = PlayerGui:FindFirstChild("TAS_GUI")
+    if oldGui then oldGui:Destroy() end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "TAS_GUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = PlayerGui
+
+    if IsMobile then
+        -- MOBILE CONTROLS FRAME
+        local MobileFrame = Instance.new("Frame")
+        MobileFrame.Name = "MobileControls"
+        MobileFrame.Size = UDim2.new(0, 160, 0, 160)
+        MobileFrame.Position = UDim2.new(0.02, 0, 0.35, 0)
+        MobileFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+        MobileFrame.BackgroundTransparency = 0.35
+        MobileFrame.BorderSizePixel = 0
+        MobileFrame.Parent = ScreenGui
+
+        local UICorner = Instance.new("UICorner", MobileFrame)
+        UICorner.CornerRadius = UDim.new(0, 10)
+
+        local UIListLayout = Instance.new("UIListLayout", MobileFrame)
+        UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        UIListLayout.Padding = UDim.new(0, 8)
+        UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+        local function CreateMobileButton(name, text, color)
+            local btn = Instance.new("TextButton")
+            btn.Name = name
+            btn.Size = UDim2.new(0.88, 0, 0, 40)
+            btn.BackgroundColor3 = color
+            btn.Text = text
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.Font = Enum.Font.SourceSansBold
+            btn.TextSize = 15
+            btn.AutoButtonColor = true
+            btn.Parent = MobileFrame
+
+            local btnCorner = Instance.new("UICorner", btn)
+            btnCorner.CornerRadius = UDim.new(0, 8)
+            return btn
+        end
+
+        local pauseBtn = CreateMobileButton("PauseBtn", "Pause / Resume", Color3.fromRGB(210, 130, 30))
+        local ziplineBtn = CreateMobileButton("ZiplineBtn", "Hold: Zipline", Color3.fromRGB(0, 150, 220))
+        local slideBtn = CreateMobileButton("SlideBtn", "Hold: Slide", Color3.fromRGB(60, 170, 90))
+
+        -- Pause Button Trigger
+        pauseBtn.MouseButton1Click:Connect(function()
+            TriggerPauseToggle()
+        end)
+
+        -- Zipline Button Touch Events
+        ziplineBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                IsManualZipline = true
+                IsCurrentlyZiplining = true
+                toggleSlide(false)
+                IsSliding = false
+                LastPlayedAnim = nil
+                ziplineBtn.BackgroundColor3 = Color3.fromRGB(0, 210, 255)
+            end
+        end)
+        ziplineBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                IsManualZipline = false
+                IsCurrentlyZiplining = false
+                LastPlayedAnim = nil
+                ziplineBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 220)
+            end
+        end)
+
+        -- Slide Button Touch Events
+        slideBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                IsManualSlide = true
+                toggleSlide(true)
+                IsSliding = true
+                LastPlayedAnim = nil
+                slideBtn.BackgroundColor3 = Color3.fromRGB(90, 220, 110)
+            end
+        end)
+        slideBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                IsManualSlide = false
+                toggleSlide(false)
+                IsSliding = false
+                LastPlayedAnim = nil
+                slideBtn.BackgroundColor3 = Color3.fromRGB(60, 170, 90)
+            end
+        end)
+    else
+        -- PC KEYBIND GUIDE FRAME
+        local GuideFrame = Instance.new("Frame")
+        GuideFrame.Name = "PCGuide"
+        GuideFrame.Size = UDim2.new(0, 220, 0, 150)
+        GuideFrame.Position = UDim2.new(0.015, 0, 0.35, 0)
+        GuideFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        GuideFrame.BackgroundTransparency = 0.25
+        GuideFrame.BorderSizePixel = 0
+        GuideFrame.Parent = ScreenGui
+
+        local UICorner = Instance.new("UICorner", GuideFrame)
+        UICorner.CornerRadius = UDim.new(0, 8)
+
+        local Title = Instance.new("TextLabel")
+        Title.Size = UDim2.new(1, 0, 0, 28)
+        Title.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+        Title.BackgroundTransparency = 0.2
+        Title.Text = "  TAS Keybind Controls"
+        Title.TextColor3 = Color3.fromRGB(0, 200, 255)
+        Title.Font = Enum.Font.SourceSansBold
+        Title.TextSize = 15
+        Title.TextXAlignment = Enum.TextXAlignment.Left
+        Title.Parent = GuideFrame
+
+        local TitleCorner = Instance.new("UICorner", Title)
+        TitleCorner.CornerRadius = UDim.new(0, 8)
+
+        local GuideText = Instance.new("TextLabel")
+        GuideText.Size = UDim2.new(0.9, 0, 0.75, 0)
+        GuideText.Position = UDim2.new(0.05, 0, 0.23, 0)
+        GuideText.BackgroundTransparency = 1
+        GuideText.Text = "[P] - Pause / Resume (Grounded)\n[Up Arrow] - Speed Up (+0.05)\n[Down Arrow] - Speed Down (-0.05)\n[Z] (Hold) - Force Zipline / Swing\n[S] (Hold) - Force Slide"
+        GuideText.TextColor3 = Color3.fromRGB(220, 220, 220)
+        GuideText.Font = Enum.Font.SourceSans
+        GuideText.TextSize = 14
+        GuideText.TextYAlignment = Enum.TextYAlignment.Top
+        GuideText.TextXAlignment = Enum.TextXAlignment.Left
+        GuideText.Parent = GuideFrame
+    end
+end
+
+SetupGUI()
+
 local MainLoop
 MainLoop = RS.Heartbeat:Connect(function()
     if not RootPart or not RootPart.Parent or not Humanoid or not Humanoid.Parent or CleanedUp then 
@@ -553,12 +820,24 @@ MainLoop = RS.Heartbeat:Connect(function()
         end
         return 
     end
-    
-    RenderedFrames = RenderedFrames + 1
-    
+
+    -- Keep LastClock updated continuously even while paused
     local CurrentClock = os.clock()
     local Delta = CurrentClock - LastClock
     LastClock = CurrentClock
+
+    -- WHILE PAUSED: Keep velocity strictly at Vector3.zero without anchoring
+    if PAUSED == true then
+        RootPart.Velocity = Vector3.zero
+        RootPart.AssemblyLinearVelocity = Vector3.zero
+        RootPart.AssemblyAngularVelocity = Vector3.zero
+        return
+    end
+
+    -- PLAYBACK ACTIVE: Guarantee player is UNANCHORED
+    RootPart.Anchored = false
+
+    RenderedFrames = RenderedFrames + 1
     
     VisualElapsed = VisualElapsed + (Delta * (1 / (TimeModifier * DynamicTimeScale)))
     
@@ -642,8 +921,8 @@ MainLoop = RS.Heartbeat:Connect(function()
     RootPart.Velocity = TargetVelocity
 
     local AnimData = FA.AAnimation
-    -- Block heuristic slide overrides if we are currently ziplining or if the animation is explicitly a zipline
-    if OverrideToSlide and not IsCurrentlyZiplining and (not AnimData or AnimData[1] ~= "zipline") then
+    -- Block heuristic slide overrides if we are currently ziplining or if the animation is explicitly a zipline/swing
+    if OverrideToSlide and not IsCurrentlyZiplining and (not AnimData or (AnimData[1] ~= "zipline" and AnimData[1] ~= "swing")) then
         AnimData = { "slide", 0.1 }
     end
 
